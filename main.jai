@@ -164,9 +164,22 @@ move :: (using board : *Board, from : ivec2, to : ivec2) {
 
 	<<c2 = upgrade(<<c2);
 }
+get_player_by_code :: (cell : Cell) -> int {
+	if cell & .FIGURE_TYPE == {
+		case .BLACK; return 0;
+		case .BLUE; return 1;
+		case .RED; return 2;
+		case .GREEN; return 3;
+		case .EMPTY; return 4;
+	}
+	assert(false);
+	return 5;
+}
 kill :: (using board : *Board, pos : ivec2) {
 	c := at_ptr(board, pos);
-	assert(xx(<<c & .FIGURE_TYPE));
+	player := get_player_by_code(<<c);
+	assert(player != 4);
+	alive_count[player] -= 1;
 	<<c &= .BOARD_PROPS;
 }
 
@@ -233,23 +246,56 @@ try_step :: (using board : *Board, from : ivec2, to : ivec2) -> enum u8 {NONE; M
 	return .NONE;
 }
 
-// can_kill :: (board : *Board, at : ivec2) -> bool {
-// 	//===
-// }
-// can_kill :: (board : *Board, player : int) -> bool {
-// 	//===
-// }
+can_kill :: (using board : *Board, pos : ivec2, cell : Cell) -> bool {
+	assert(at(board, pos) == cell);
+	assert(!!(cell & .FIGURE_TYPE));
+	length, capture_dirs, dirs := get_properties(cell, rules);
+	assert(length > 0);
+
+	for dir : dirs {
+		if dir == .{} continue;
+		obstacle_dist := -1;
+		obstacle : Cell;
+		for i : 1..length {
+			obstacle = at(board, pos + dir * i);
+			if is_obstacle(obstacle) {
+				obstacle_dist = i;
+				break;
+			}
+		}
+		if obstacle_dist == -1 continue;
+		if is_enemies(obstacle, cell) && !is_obstacle(at(board, pos + dir * cast(s32)(obstacle_dist + 1))) then return true;
+	}
+	return false;
+}
+can_kill :: (using board : *Board, player : int) -> bool {
+	player_flag : Cell = xx(0x001 << player);
+	i := 0;
+	for y : 0..diam-1 {
+		for x : 0..diam-1 {
+			cell := cells[i];
+			if !(cell & player_flag) continue;
+			if can_kill(board, .{xx x, xx y}, cell) return true;
+		}
+	}
+	return false;
+}
 // undo_single :: (board : *Board) {
 // 	//===
 // }
 // undo_full :: (board : *Board) {
 // 	//===
 // }
-is_final :: (using board : *Board) -> bool {
-	alive := 0;
-	for alive_count { alive += xx!!it;}
+is_final :: (using board : *Board) -> bool, winner:int {
+	alive, winner := 0, 4;
+	for alive_count {
+		if it > 0 {
+			winner = it;
+			alive += 1;
+		}
+	}
 	assert(alive > 0);
-	return alive == 1;
+	return alive == 1, winner;
 }
 
 Board_Interface :: struct {
@@ -283,6 +329,9 @@ click :: (using board_interface : *Board_Interface) {
 
 			case .KILL;
 			selected = cursor;
+			if !can_kill(board, selected, at(board, selected)) {
+				click(board_interface);
+			}
 		}
 	}
 }
@@ -304,6 +353,8 @@ handle_key_board_interface :: (using board_interface : *Board_Interface, key : K
 
 c_draw_board :: (canvas : *Canvas, using board_interface : Board_Interface, offset : ivec2, show_cursor : bool) {
 	i := 0;
+	current_player_color := Color.[.BRIGHT_BLACK, .BLUE, .RED, .GREEN][current_player];
+
 	for y_c : 0..diam-1 {
 		for x_c : 0..2*diam-1 {
 			x := x_c / 2;
@@ -317,7 +368,7 @@ c_draw_board :: (canvas : *Canvas, using board_interface : Board_Interface, offs
 			background : Color = 
 				ifx pos == cursor && show_cursor then .BRIGHT_YELLOW else 
 				ifx pos == selected then .BRIGHT_MAGENTA else 
-				ifx cell & .BORDER then .BLACK else
+				ifx cell & .BORDER then current_player_color else
 				ifx (x + y) % 2 then .WHITE else
 				.BRIGHT_WHITE;
 			foreground : Color =
@@ -336,6 +387,11 @@ c_draw_board :: (canvas : *Canvas, using board_interface : Board_Interface, offs
 			i += 1;
 		}
 	}
+	delta : s32 = xx((diam * 2 - 17) / 2); 
+	c_draw_line_ascii(canvas, tprint("[%|   |   |   ]", formatInt(alive_count[0], minimum_digits = 3, padding = #char" ")), .{delta, xx diam}, make_graphics_mode(background = .WHITE, foreground = .BLACK));
+	c_draw_line_ascii(canvas, tprint("%", formatInt(alive_count[1], minimum_digits = 3, padding = #char" ")), .{5 + delta, xx diam}, make_graphics_mode(background = .WHITE, foreground = .BLUE));
+	c_draw_line_ascii(canvas, tprint("%", formatInt(alive_count[2], minimum_digits = 3, padding = #char" ")), .{9 + delta, xx diam}, make_graphics_mode(background = .WHITE, foreground = .RED));
+	c_draw_line_ascii(canvas, tprint("%", formatInt(alive_count[3], minimum_digits = 3, padding = #char" ")), .{13 + delta, xx diam}, make_graphics_mode(background = .WHITE, foreground = .GREEN));
 }
 
 main :: () {
@@ -357,8 +413,6 @@ main :: () {
 
 	use_ks_curses();
 	use_events(tick_duration_ms = 530);
-
-	// log("%", board);
 
 	draw_game();
 	while !stop_main {
