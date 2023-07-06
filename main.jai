@@ -9,10 +9,10 @@ my_array_find :: (array: [] $T, item: T) -> bool, s64 {
 }
 
 Rules :: struct {
-	diam, cutoff : s32 = 16, 4; 
+	diam, cutoff, rows, rows_offset : s32 = 16, 4, 4, 0; 
 	must_capture := false;
-	// diagonal := true;
-	// no_scope_180 := false;
+	diagonal := true;
+	// _180_no_scope := false;
 	// upgrade_in_process := true;
 	// leveled_upgrade := false;
 	// length_by_level := s32.[1, 2, 4, 8];
@@ -75,39 +75,49 @@ at :: (using board : *Board, pos : ivec2) -> Cell {
 	return cells[pos.x + diam * pos.y];
 }
 init :: (using board : *Board, _rules : *Rules) {
+	// check if valid rules
 	rules = _rules;
 	cells = NewArray(diam * diam, Cell);
 	i := 0;
+
+	dist_and_boost_flag :: (using rules : *Rules, x : s32, y : s32) -> border_dist:s32, corner_dist:s32, Cell, dir_id:s32 {
+		border_dist, dir_id : s32 = diam - 1 - x, 0;
+		if diam - 1 - y < border_dist then border_dist, dir_id = diam - 1 - y, 1;
+		if x < border_dist then border_dist, dir_id = x, 2;
+		if y < border_dist then border_dist, dir_id = y, 3;
+		
+		corner_dist := max(min(x, diam - x - 1), min(y, diam - y - 1));
+		
+		boost := Cell.FIGURE_TYPE;
+		if y >= x then boost &= .BLUE | .RED;
+		if y <= x then boost &= .GREEN | .BLACK;
+		if y + x >= diam - 1 then boost &= .BLUE | .BLACK;
+		if x + y <= diam - 1 then boost &= .GREEN | .RED;
+
+		return border_dist, corner_dist, boost, dir_id;
+	}
+
 	for y : 0..diam-1 {
 		for x : 0..diam-1 {
-			cell : Cell;
-			if (x < cutoff || x >= diam - cutoff) && (y < cutoff || y >= diam - cutoff) {
-				cell = .BORDER;
-			} else {
-				if (x + y) % 2 {
-					cell = .EMPTY;
-				} else if y >= diam - cutoff {
-					cell = .BLUE; alive_count[1] += 1;
-				} else if x >= diam - cutoff {
-					cell = .BLACK; alive_count[0] += 1;
-				} else if y < cutoff {
-					cell = .GREEN; alive_count[3] += 1;
-				} else if x < cutoff {
-					cell = .RED; alive_count[2] += 1;
-				}
-
-				if y == diam - 1 {
-					cell |= .BOOST_GREEN;
-				} else if x == diam - 1 {
-					cell |= .BOOST_BLACK;
-				} else if y == 0 {
-					cell |= .BOOST_BLUE;
-				} else if x == 0 {
-					cell |= .BOOST_RED;
-				}				
+			border_dist, corner_dist, flag, dir_id := dist_and_boost_flag(rules, x, y);
+			cell : Cell; defer {
+				cells[i] = cell;
+				i += 1;
 			}
-			cells[i] = cell;
-			i += 1;
+			if corner_dist < cutoff {
+				cell = .BORDER;
+				continue;
+			}
+			if border_dist == 0 {
+				cell |= flag << 8;
+			}
+			if border_dist >= rows_offset && border_dist < rows_offset + rows {
+				if !diagonal || (x + y) % 2 == 0 {
+					assert(flag == .BLACK || flag == .BLUE || flag == .RED || flag == .GREEN, tprint("flag = %, x = %, y = %\n", flag, x, y));
+					cell |= flag;
+					alive_count[dir_id] += 1;
+				}
+			}
 		}
 	}
 }
@@ -116,18 +126,31 @@ deinit :: (using board : *Board) {
 }
 // TODO cell_props :: struct {}
 get_properties :: (cell : Cell, rules : *Rules) -> length:s32, capture_dirs:[4]ivec2, dirs:[4]ivec2 {
-	capture_dirs, dirs : [4]ivec2 = .[.{1, 1}, .{-1, 1}, .{1, -1}, .{-1, -1}];
 	length := ifx cell & .KING_ANY then rules.diam else 1;
 	figure := cell & .FIGURE;
 	if !figure return 0, .[.{},.{},.{},.{}], .[.{},.{},.{},.{}];
-	if !(cell & .KING_ANY) if figure == {
-		case .BLACK; dirs[0], dirs[2] = .{}, .{};
-		case .BLUE;  dirs[0], dirs[1] = .{}, .{};
-		case .RED;   dirs[1], dirs[3] = .{}, .{};
-		case .GREEN; dirs[2], dirs[3] = .{}, .{};
-		case; assert(false);
+
+	capture_dirs, dirs : [4]ivec2;
+	if rules.diagonal {
+		capture_dirs, dirs = .[.{1, 1}, .{-1, 1}, .{1, -1}, .{-1, -1}];
+		if !(cell & .KING_ANY) if figure == {
+			case .BLACK; dirs[0], dirs[2] = .{}, .{};
+			case .BLUE;  dirs[0], dirs[1] = .{}, .{};
+			case .RED;   dirs[1], dirs[3] = .{}, .{};
+			case .GREEN; dirs[2], dirs[3] = .{}, .{};
+			case; assert(false);
+		}
+	} else {
+		capture_dirs, dirs = .[.{-1, 0}, .{0, -1}, .{1, 0}, .{0, 1}];
+		if !(cell & .KING_ANY) if figure == {
+			case .BLACK; dirs[2] = .{};
+			case .BLUE;  dirs[3] = .{};
+			case .RED;   dirs[0] = .{};
+			case .GREEN; dirs[1] = .{};
+			case; assert(false);
+		}
 	}
-	return xx length, capture_dirs, dirs;
+	return xx length, capture_dirs, dirs;		
 }
 get_dir_and_length :: (from : ivec2, to : ivec2) -> ivec2, s32 {
 	abs_and_sign :: inline (x : s32) -> s32, s32 {
@@ -248,14 +271,14 @@ try_step :: (using board : *Board, from : ivec2, to : ivec2) -> enum u8 {NONE; M
 }
 
 can_kill :: (using board : *Board, pos : ivec2) -> bool {
-	log("can_kill:\n");
+	// log("can_kill:\n");
 	cell := at(board, pos);
 	assert(!!(cell & .FIGURE_TYPE));
 	length, capture_dirs, dirs := get_properties(cell, rules);
 	assert(length > 0);
 
 	for dir : capture_dirs {
-		log("dir = %\n", dir);
+		// log("dir = %\n", dir);
 		if dir == .{} || dir == -last_capture_dir continue;
 		obstacle_dist := -1;
 		obstacle : Cell;
@@ -317,13 +340,13 @@ click :: (using board_interface : *Board_Interface) {
 
 	if selected == .{-1, -1} then {
 		if !is_owned_by(at(board, cursor), current_player) return;
-		// if should_current_player_kill(board) && !can_kill(board, cursor) return;
+		if should_current_player_kill(board) && !can_kill(board, cursor) return;
 		selected = cursor;
 	} else {
 		result := try_step(board, selected,	cursor);
 		if result == {
 			case .NONE;
-			log("none\n");
+			// log("none\n");
 			if selected == cursor {
 				selected = .{-1, -1};
 			} else if is_owned_by(at(board, cursor), current_player) {
@@ -331,18 +354,18 @@ click :: (using board_interface : *Board_Interface) {
 			}
 
 			case .MOVE;
-			log("move\n");
+			// log("move\n");
 			selected = .{-1, -1};
 
 			case .ENDSEQ;
-			log("endseq\n");
+			// log("endseq\n");
 			selected = .{-1, -1};
 
 			case .KILL;
-			log("kill\n");
+			// log("kill\n");
 			selected = cursor;
 			if !can_kill(board, selected) {
-				log("extra click\n");
+				// log("extra click\n");
 				click(board_interface);
 			}
 		}
@@ -438,7 +461,9 @@ main :: () {
 
 #scope_file
 
-rules := Rules.{diam = 12, cutoff = 2, must_capture = true};
+// rules := Rules.{diam = 12, cutoff = 2, rows = 2, must_capture = true};
+rules := Rules.{diam = 16, cutoff = 4, rows = 2, rows_offset = 1, must_capture = false, diagonal = false};
+
 board : Board;
 board_interface : Board_Interface;
 main_canvas : Canvas;
