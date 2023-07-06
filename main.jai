@@ -10,7 +10,7 @@ my_array_find :: (array: [] $T, item: T) -> bool, s64 {
 
 Rules :: struct {
 	diam, cutoff : s32 = 16, 4; 
-	// must_capture := false;
+	must_capture := false;
 	// diagonal := true;
 	// no_scope_180 := false;
 	// upgrade_in_process := true;
@@ -213,6 +213,7 @@ try_step :: (using board : *Board, from : ivec2, to : ivec2) -> enum u8 {NONE; M
 	max_length, capture_dirs, move_dirs := get_properties(cell, rules);
 
 	if !is_owned_by(cell, current_player) return .NONE;
+
 	capture :: (using board : *Board, from : ivec2, to : ivec2, dir : ivec2) {
 		move(board, from, to);
 		kill(board, to - dir);
@@ -233,7 +234,7 @@ try_step :: (using board : *Board, from : ivec2, to : ivec2) -> enum u8 {NONE; M
 		}
 	} else {
 		if dir == .{} return .NONE;
-		if ready_for_move(board, from, length, max_length, dir, move_dirs) {
+		if !should_current_player_kill(board) && ready_for_move(board, from, length, max_length, dir, move_dirs) {
 			move(board, from, to);
 			end_step(board);
 			return .MOVE;
@@ -246,14 +247,16 @@ try_step :: (using board : *Board, from : ivec2, to : ivec2) -> enum u8 {NONE; M
 	return .NONE;
 }
 
-can_kill :: (using board : *Board, pos : ivec2, cell : Cell) -> bool {
-	assert(at(board, pos) == cell);
+can_kill :: (using board : *Board, pos : ivec2) -> bool {
+	log("can_kill:\n");
+	cell := at(board, pos);
 	assert(!!(cell & .FIGURE_TYPE));
 	length, capture_dirs, dirs := get_properties(cell, rules);
 	assert(length > 0);
 
-	for dir : dirs {
-		if dir == .{} continue;
+	for dir : capture_dirs {
+		log("dir = %\n", dir);
+		if dir == .{} || dir == -last_capture_dir continue;
 		obstacle_dist := -1;
 		obstacle : Cell;
 		for i : 1..length {
@@ -269,16 +272,20 @@ can_kill :: (using board : *Board, pos : ivec2, cell : Cell) -> bool {
 	return false;
 }
 can_kill :: (using board : *Board, player : int) -> bool {
-	player_flag : Cell = xx(0x001 << player);
+	player_flag : Cell = xx(0x0001 << player);
 	i := 0;
 	for y : 0..diam-1 {
 		for x : 0..diam-1 {
+			defer i += 1;
 			cell := cells[i];
 			if !(cell & player_flag) continue;
-			if can_kill(board, .{xx x, xx y}, cell) return true;
+			if can_kill(board, .{xx x, xx y}) return true;
 		}
 	}
 	return false;
+}
+should_current_player_kill :: (using board : *Board) -> bool {
+	return must_capture && can_kill(board, current_player);
 }
 // undo_single :: (board : *Board) {
 // 	//===
@@ -310,11 +317,13 @@ click :: (using board_interface : *Board_Interface) {
 
 	if selected == .{-1, -1} then {
 		if !is_owned_by(at(board, cursor), current_player) return;
+		// if should_current_player_kill(board) && !can_kill(board, cursor) return;
 		selected = cursor;
 	} else {
 		result := try_step(board, selected,	cursor);
 		if result == {
 			case .NONE;
+			log("none\n");
 			if selected == cursor {
 				selected = .{-1, -1};
 			} else if is_owned_by(at(board, cursor), current_player) {
@@ -322,14 +331,18 @@ click :: (using board_interface : *Board_Interface) {
 			}
 
 			case .MOVE;
+			log("move\n");
 			selected = .{-1, -1};
 
 			case .ENDSEQ;
+			log("endseq\n");
 			selected = .{-1, -1};
 
 			case .KILL;
+			log("kill\n");
 			selected = cursor;
-			if !can_kill(board, selected, at(board, selected)) {
+			if !can_kill(board, selected) {
+				log("extra click\n");
 				click(board_interface);
 			}
 		}
@@ -425,7 +438,7 @@ main :: () {
 
 #scope_file
 
-rules := Rules.{diam = 12, cutoff = 2};
+rules := Rules.{diam = 12, cutoff = 2, must_capture = true};
 board : Board;
 board_interface : Board_Interface;
 main_canvas : Canvas;
