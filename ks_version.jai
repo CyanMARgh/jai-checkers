@@ -1,48 +1,5 @@
 #load "board.jai";
 
-Board_Interface :: struct {
-	using board : *Board;
-	player_me := 4;
-
-	selected := ivec2.{-1, -1};
-	cursor := ivec2.{0, 0};
-}
-click :: (using board_interface : *Board_Interface) {
-	if player_me != 4 && player_me != current_player return;
-
-	if selected == .{-1, -1} then {
-		if !is_owned_by(at(board, cursor), current_player) return;
-		if should_current_player_kill(board) && !can_kill(board, cursor) return;
-		selected = cursor;
-	} else {
-		result := try_step(board, selected,	cursor);
-		if result == {
-			case .NONE;
-			// log("none\n");
-			if selected == cursor {
-				selected = .{-1, -1};
-			} else if is_owned_by(at(board, cursor), current_player) {
-				selected = cursor;
-			}
-
-			case .MOVE;
-			// log("move\n");
-			selected = .{-1, -1};
-
-			case .ENDSEQ;
-			// log("endseq\n");
-			selected = .{-1, -1};
-
-			case .KILL;
-			// log("kill\n");
-			selected = cursor;
-			if !can_kill(board, selected) {
-				// log("extra click\n");
-				click(board_interface);
-			}
-		}
-	}
-}
 handle_key_board_interface :: (using board_interface : *Board_Interface, key : Key) {
 	if key == {
 		case .ENTER;
@@ -132,8 +89,8 @@ main :: () {
 
 #scope_file
 
-// rules := Rules.{diam = 12, cutoff = 2, rows = 2, must_capture = true};
-rules := Rules.{diam = 16, cutoff = 4, rows = 2, rows_offset = 1, must_capture = false, diagonal = false};
+rules := Rules.{diam = 12, cutoff = 2, rows = 2, must_capture = true};
+// rules := Rules.{diam = 16, cutoff = 4, rows = 2, rows_offset = 1, must_capture = false, diagonal = false};
 
 board : Board;
 board_interface : Board_Interface;
@@ -148,6 +105,7 @@ init_game :: () {
 	init(*board, *rules);
 }
 deinit_game :: () {
+	log("%\n", board.history);
 	deinit(*board);
 	deinit(*main_canvas);
 }

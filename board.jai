@@ -47,12 +47,26 @@ Cell :: enum_flags u16 {
 }
 
 Step :: struct {
-	type : enum u8 { MOVE; KILL; STEPEND; UPGRADE; };
-	pos, to : ivec2;
-	bef, aft : Cell;
+	type : enum u8 { NONE; INVALID; MOVE; CAPTURE; STEPEND; UPGRADE; };
+	union {
+		data_move : struct {
+			from, to : ivec2;
+		};
+		data_capture : struct {
+			from, to, dir : ivec2;
+			killed : Cell;
+		};
+		data_upgrade : struct {
+			pos : ivec2;
+			bef, aft : Cell;
+		};
+		data_stepend : struct {
+			player_old, player_new : int;
+		};
+	}
 }
 // 1) MOVE [, UPGRADE] STEPEND
-// 2) MOVE & KILL [, UPGRADE], MOVE & KILL [, UPGRADE], MOVE & KILL [, UPGRADE] STEPEND
+// 2) CAPTURE [, UPGRADE], CAPTURE [, UPGRADE], CAPTURE [, UPGRADE] STEPEND
 Board :: struct {
 	using rules : *Rules;
 
@@ -123,6 +137,7 @@ init :: (using board : *Board, _rules : *Rules) {
 }
 deinit :: (using board : *Board) {
 	array_free(cells);
+	array_free(history);
 }
 // TODO cell_props :: struct {}
 get_properties :: (cell : Cell, rules : *Rules) -> length:s32, capture_dirs:[4]ivec2, dirs:[4]ivec2 {
@@ -170,23 +185,6 @@ is_enemies :: inline (c1 : Cell, c2 : Cell) -> bool {
 	return !(c1 & c2) && c1 && c2;
 }
 is_owned_by :: (cell : Cell, player : int) -> bool { return xx ((0x0001 << player) & cast(int)cell); }
-maybe_upgrade :: (using board : *Board, pos : ivec2) {
-	cell := at_ptr(board, pos);
-	<<cell |= ((<<cell & .BOOSTS) >> 4) & ~((<<cell & .FIGURE_TYPE) << 4);
-}
-upgrade :: (c : Cell) -> Cell {
-	return c | (((c & .BOOSTS) >> 4) & ~((c & .FIGURE_TYPE) << 4));
-}
-move :: (using board : *Board, from : ivec2, to : ivec2) {
-	c1, c2 := at_ptr(board, from), at_ptr(board, to);
-	assert(xx (<<c1 & .FIGURE));
-	assert(!(<<c2 & .FIGURE));
-
-	<<c2 |= <<c1 & .FIGURE;
-	<<c1 &= .BOARD_PROPS;
-
-	<<c2 = upgrade(<<c2);
-}
 get_player_by_code :: (cell : Cell) -> int {
 	if cell & .FIGURE_TYPE == {
 		case .BLACK; return 0;
@@ -198,27 +196,116 @@ get_player_by_code :: (cell : Cell) -> int {
 	assert(false);
 	return 5;
 }
-kill :: (using board : *Board, pos : ivec2) {
-	c := at_ptr(board, pos);
-	player := get_player_by_code(<<c);
-	assert(player != 4);
-	alive_count[player] -= 1;
-	<<c &= .BOARD_PROPS;
+upgrade :: (c : Cell) -> Cell {
+	return c | (((c & .BOOSTS) >> 4) & ~((c & .FIGURE_TYPE) << 4));
+}
+
+gen_step_move :: (using board : *Board, from : ivec2, to : ivec2) -> Step {
+	return .{type = .MOVE, data_move = .{from = from, to = to}};
+}
+
+gen_step_capture :: (using board : *Board, from : ivec2, to : ivec2, dir : ivec2) -> Step {
+	killed := at(board, to - dir);
+	return .{type = .CAPTURE, data_capture = .{from = from, to = to, dir = dir, killed = killed}};
+}
+gen_step_upgrade :: (using board : *Board, pos : ivec2) -> Step {
+	c := at(board, pos);
+	c_aft := upgrade(c);
+	return .{type = ifx c == c_aft then .NONE else .UPGRADE, data_upgrade = .{pos = pos, bef = c, aft = c_aft}};
+}
+gen_step_end :: (using board : *Board) -> Step {
+	player_old, player_new := current_player;
+	while 1 {
+		player_new = (player_new + 1) % 4;
+		if alive_count[player_new] break;
+	}
+	return .{type = .STEPEND, data_stepend = .{player_old = player_old, player_new = player_new}};
+}
+
+apply :: (using board : *Board, step : Step) {
+	if #complete step.type == {
+		case .MOVE; using step.data_move; 
+		c1, c2 := at_ptr(board, from), at_ptr(board, to);
+		<<c2 |= <<c1 & .FIGURE;
+		<<c1 &= .BOARD_PROPS;
+
+		case .CAPTURE; using step.data_capture;
+		c1, c2, c3 := at_ptr(board, from), at_ptr(board, to), at_ptr(board, to - dir);
+		<<c2 |= <<c1 & .FIGURE;
+		<<c1 &= .BOARD_PROPS;
+
+		killed_player := get_player_by_code(<<c3);
+		assert(killed_player != 4);
+		alive_count[killed_player] -= 1;
+
+		<<c3 &= .BOARD_PROPS;
+		active_figure = to;
+		last_capture_dir = dir;
+
+		case .UPGRADE; using step.data_upgrade;
+		<<at_ptr(board, pos) = aft;
+
+		case .STEPEND; using step.data_stepend;
+		active_figure = .{-1, -1};
+		last_capture_dir = .{};
+		current_player = player_new;
+
+		case .INVALID;
+		assert(false);
+		case .NONE;
+		assert(false);
+	}
+	array_add(*(board.history), step);
+}
+
+get_last_step_view :: (using board : *Board) -> []Step {
+	tail_count := history.count;
+	if !tail_count return .[];
+	tail_count -= 1;
+	while true {
+		if tail_count == 0 || history[tail_count - 1].type == .STEPEND break;
+		tail_count -= 1;
+	}
+
+	view : []Step;
+	view.count = history.count - tail_count;
+	view.data = history.data + tail_count;
+	return view;
+}
+
+// undo_single :: (using board : *Board) {
+// 	// step := pop(history);
+// 	//===
+// }
+// undo_full :: (board : *Board) {
+// 	//===
+// }
+
+move :: (using board : *Board, from : ivec2, to : ivec2) {
+	step := gen_step_move(board, from, to);
+	apply(board, step);
+	step2 := gen_step_upgrade(board, to);
+	if step2.type == .UPGRADE then apply(board, step2);
+}
+capture :: (using board : *Board, from : ivec2, to : ivec2, dir : ivec2) {
+	step := gen_step_capture(board, from, to, dir);
+	apply(board, step);
+	step2 := gen_step_upgrade(board, to);
+	if step2.type == .UPGRADE then apply(board, step2);
 }
 
 end_step :: (using board : *Board) {
-	current_player = (current_player + 1) % 4;
-	active_figure = .{-1, -1};
-	last_capture_dir = .{};
+	step := gen_step_end(board);
+	apply(board, step);
 }
 
-try_step :: (using board : *Board, from : ivec2, to : ivec2) -> enum u8 {NONE; MOVE; KILL; ENDSEQ;} {
+try_step :: (using board : *Board, from : ivec2, to : ivec2) -> enum u8 {NONE; MOVE; CAPTURE; ENDSEQ;} {
 	ready_for_move :: (board : *Board, from : ivec2, length : s32, max_length : s32, dir : ivec2, move_dirs : [4]ivec2) -> bool {
 		if length < 1 || length > max_length || !my_array_find(move_dirs, dir) then return false;
 		for i : 1..length if is_obstacle(at(board, from + dir * i)) return false;
 		return true;
 	}
-	ready_for_kill :: (board : *Board, from : ivec2, length : s32, max_length : s32, dir : ivec2, capture_dirs : [4]ivec2) -> bool {
+	ready_for_capture :: (board : *Board, from : ivec2, length : s32, max_length : s32, dir : ivec2, capture_dirs : [4]ivec2) -> bool {
 		if length <= 1 || length > max_length + 1 || !my_array_find(capture_dirs, dir) then return false;
 		for i : 1..length {
 			pos := from + dir * i;
@@ -237,13 +324,6 @@ try_step :: (using board : *Board, from : ivec2, to : ivec2) -> enum u8 {NONE; M
 
 	if !is_owned_by(cell, current_player) return .NONE;
 
-	capture :: (using board : *Board, from : ivec2, to : ivec2, dir : ivec2) {
-		move(board, from, to);
-		kill(board, to - dir);
-		active_figure = to;
-		last_capture_dir = dir;
-	}
-
 	if active_figure != .{-1, -1} then {
 		if from != active_figure then return .NONE;
 
@@ -251,34 +331,35 @@ try_step :: (using board : *Board, from : ivec2, to : ivec2) -> enum u8 {NONE; M
 			end_step(board);
 			return .ENDSEQ;
 		}
-		if dir != .{} && dir != -last_capture_dir && ready_for_kill(board, from, length, max_length, dir, capture_dirs) {
+		if dir != .{} && dir != -last_capture_dir && ready_for_capture(board, from, length, max_length, dir, capture_dirs) {
 			capture(board, from, to, dir);
-			return .KILL;
+			return .CAPTURE;
 		}
 	} else {
 		if dir == .{} return .NONE;
-		if !should_current_player_kill(board) && ready_for_move(board, from, length, max_length, dir, move_dirs) {
+		if !should_current_player_capture(board) && ready_for_move(board, from, length, max_length, dir, move_dirs) {
 			move(board, from, to);
 			end_step(board);
 			return .MOVE;
 		}
-		if ready_for_kill(board, from, length, max_length, dir, capture_dirs) {
+		if ready_for_capture(board, from, length, max_length, dir, capture_dirs) {
 			capture(board, from, to, dir);
-			return .KILL;
+			return .CAPTURE;
 		}
 	}
 	return .NONE;
 }
 
-can_kill :: (using board : *Board, pos : ivec2) -> bool {
-	// log("can_kill:\n");
+what_can_do :: (using board : *Board, pos : ivec2) -> can_capture:bool, can_move:bool {
 	cell := at(board, pos);
 	assert(!!(cell & .FIGURE_TYPE));
-	length, capture_dirs, dirs := get_properties(cell, rules);
+	length, capture_dirs, move_dirs := get_properties(cell, rules);
 	assert(length > 0);
 
+	can_capture := false;
+	can_move := false;
+
 	for dir : capture_dirs {
-		// log("dir = %\n", dir);
 		if dir == .{} || dir == -last_capture_dir continue;
 		obstacle_dist := -1;
 		obstacle : Cell;
@@ -290,35 +371,43 @@ can_kill :: (using board : *Board, pos : ivec2) -> bool {
 			}
 		}
 		if obstacle_dist == -1 continue;
-		if is_enemies(obstacle, cell) && !is_obstacle(at(board, pos + dir * cast(s32)(obstacle_dist + 1))) then return true;
+		if is_enemies(obstacle, cell) && !is_obstacle(at(board, pos + dir * cast(s32)(obstacle_dist + 1))) {
+			can_capture = true;
+			break;
+		}
 	}
-	return false;
+	for dir : move_dirs {
+		if !is_obstacle(at(board, pos + dir)) {
+			can_move = true;
+			break;
+		}
+	}
+
+	return can_capture, can_move;
 }
-// check_possible_steps :: (using board : *Board, pos : ivec2, $check_move : bool, $check_kill : bool) -> kill:bool, move:bool {
-// 	//======
-// }
-can_kill :: (using board : *Board, player : int) -> bool {
+what_can_do :: (using board : *Board, player : int) -> can_capture:bool, can_move:bool {
 	player_flag : Cell = xx(0x0001 << player);
+
+	can_capture, can_move : bool;
 	i := 0;
 	for y : 0..diam-1 {
 		for x : 0..diam-1 {
 			defer i += 1;
 			cell := cells[i];
 			if !(cell & player_flag) continue;
-			if can_kill(board, .{xx x, xx y}) return true;
+			can_capture_f, can_move_f := what_can_do(board, .{xx x, xx y});
+			can_capture |= can_capture_f;
+			can_move |= can_move_f;
+
+			if can_move && can_capture return true, true;
 		}
 	}
-	return false;
+	return can_capture, can_move;
 }
-should_current_player_kill :: (using board : *Board) -> bool {
-	return must_capture && can_kill(board, current_player);
+should_current_player_capture :: (using board : *Board) -> bool {
+	can_capture, can_move := what_can_do(board, current_player);
+	return must_capture && can_capture;
 }
-// undo_single :: (board : *Board) {
-// 	//===
-// }
-// undo_full :: (board : *Board) {
-// 	//===
-// }
 is_final :: (using board : *Board) -> bool, winner:int {
 	alive, winner := 0, 4;
 	for alive_count {
@@ -329,4 +418,45 @@ is_final :: (using board : *Board) -> bool, winner:int {
 	}
 	assert(alive > 0);
 	return alive == 1, winner;
+}
+
+Board_Interface :: struct {
+	using board : *Board;
+	player_me := 4;
+
+	selected := ivec2.{-1, -1};
+	cursor := ivec2.{0, 0};
+}
+click :: (using board_interface : *Board_Interface) {
+	if player_me != 4 && player_me != current_player return;
+
+	if selected == .{-1, -1} then {
+		if !is_owned_by(at(board, cursor), current_player) return;
+		can_capture, can_move := what_can_do(board, cursor);
+		if (should_current_player_capture(board) || !can_move) && !can_capture return;
+		selected = cursor;
+	} else {
+		result := try_step(board, selected,	cursor);
+		if result == {
+			case .NONE;
+			if selected == cursor {
+				selected = .{-1, -1};
+			} else if is_owned_by(at(board, cursor), current_player) {
+				selected = cursor;
+			}
+
+			case .MOVE;
+			selected = .{-1, -1};
+
+			case .ENDSEQ;
+			selected = .{-1, -1};
+
+			case .CAPTURE;
+			selected = cursor;
+			can_capture, can_move := what_can_do(board, selected);
+			if !can_capture {
+				click(board_interface);
+			}
+		}
+	}
 }
