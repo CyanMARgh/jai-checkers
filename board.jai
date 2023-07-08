@@ -2,6 +2,24 @@
 // #poke_name Basic operator==;
 #import,dir "../kscurses";
 #import "Math";
+#load "2diMatrix.jai";
+
+// Rotations: 90, 180, 270, 0; with a shift to keep coords positive
+player_rotations :: iMatrix3x2.[.{0,1,0,-1,0,1},.{-1,0,1,0,-1,1},.{0,-1,1,1,0,0},.{1,0,0,0,1,0}];
+
+FOLLOW_PLAYERS :: 1;
+rotate_to_player :: (using board_int : *Board_Interface, v : ivec2) -> ivec2 {
+    player := player_me;
+    if player == 4 #if !FOLLOW_PLAYERS {return v;} else {player = current_player;}
+    return player_rotations[player] * ivec3.{v.x, v.y, diam-1};
+}
+
+rotate_to_board :: (using board_int : *Board_Interface, v : ivec2) -> ivec2 {
+    player := player_me;
+    if player == 4 #if !FOLLOW_PLAYERS {return v;} else {player = current_player;}
+    return player_rotations[ifx player%2 then player else 2-player] * ivec3.{v.x, v.y, diam-1}; // same for 0 and 180, swapped for 90 and 270.
+}
+
 
 my_array_find :: (array: [] $T, item: T) -> bool, s64 {
 	for array if it == item return true, it_index;

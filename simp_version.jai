@@ -15,10 +15,9 @@ Input :: #import "Input";
 GAME_NAME :: "checkers_jai";
 GAME_VERSION :: "v1";
 
-mouse_over    : ivec2 = .{-1, -1};
-selected_tile : ivec2 = .{-1, -1};
 rules := Rules.{diam=16, cutoff=4, rows=3, rows_offset=0, must_capture=false, diagonal=true};
 board : Board;
+board_interface: Board_Interface;
 
 player_colors :: Vector4.[.{.933,.378,.407,1.},.{.424,.964,.273,1.},.{.254,.306,.936,1.},.{.917,.999,.000,1.}, .{0,0,0,1}];
 
@@ -54,6 +53,7 @@ main :: () {
     my_window = create_window(window_width, window_height, #run sprint("% %", GAME_NAME, GAME_VERSION));
     // Init board
     {
+        board_interface.board = *board;
         board.rules = *rules;
         init(*board, *rules);
     }
@@ -105,14 +105,16 @@ main :: () {
         }
         // Get mouse position
         {
+            using board_interface;
             x, y, success := get_mouse_pointer_position(my_window, true);
             if success && (x >= cast(int) board_corner.x && y >= cast(int) board_corner.y) {
                 l := min(window_width, window_height);
-                mouse_over.x = cast(s32) (x - cast(s32) board_corner.x)*rules.diam/l;
-                mouse_over.y = cast(s32) (y - cast(s32) board_corner.y)*rules.diam/l;
-                if (mouse_over.x >= rules.diam || mouse_over.y >= rules.diam) mouse_over.x = -1;
-                if at(*board, mouse_over) & .BORDER then mouse_over.x = -1;
-            } else mouse_over.x = -1;
+                cursor.x = cast(s32) (x - cast(s32) board_corner.x)*rules.diam/l;
+                cursor.y = cast(s32) (y - cast(s32) board_corner.y)*rules.diam/l;
+                if (cursor.x >= rules.diam || cursor.y >= rules.diam) cursor = .{-1, -1};
+                if at(board, cursor) & .BORDER then cursor = .{-1, -1};
+            } else cursor = .{-1, -1};
+            if cursor != .{-1, -1} cursor = rotate_to_board(*board_interface, cursor);
         }
 
         for Input.events_this_frame {
@@ -125,34 +127,12 @@ main :: () {
                 }
 
                 if it.key_pressed && it.key_code == .PRINT_SCREEN {  // Press PrintScreen to take a screenshot.
-                want_screenshot = true;
-            }
-
-            if it.key_pressed && it.key_code == .MOUSE_BUTTON_LEFT { // Make move
-            moving_player := board.current_player;
-            if mouse_over.x != -1 {
-                if selected_tile.x == -1 {
-                    if is_owned_by(at(*board, mouse_over), moving_player) &&
-                       (!should_current_player_kill(*board) || can_kill(*board, mouse_over))
-                    then selected_tile = mouse_over;
-                } else {
-                    if selected_tile == mouse_over selected_tile.x = -1;
-                    else if is_owned_by(at(*board, mouse_over), moving_player) selected_tile = mouse_over;
-                    else {
-                        result := try_step(*board, selected_tile, mouse_over);
-                        if result == {
-                            case .NONE;
-                            case .MOVE; #through;
-                            case .ENDSEQ;
-                                selected_tile.x = -1;
-                            case .KILL;
-                                selected_tile = mouse_over;
-                                // Can't have an extra hacky click behind the scenes in this game
-                        }
-                    }
+                    want_screenshot = true;
                 }
-            }
-        }
+
+                if it.key_pressed && it.key_code == .MOUSE_BUTTON_LEFT { // Make move
+                    click(*board_interface);
+                }
 
                 /*if it.key_pressed && it.key_code == .MOUSE_BUTTON_RIGHT { // Change player
                     moving_player = moving_player % 4 + 1;
@@ -213,7 +193,7 @@ draw_one_frame :: (time: float64, dt : float) {
         color2 :: Vector4.{.813,.734,.028,1.};
         border :: 0.01;
         for x: 0..rules.diam-1 for y: 0..rules.diam-1 {
-            if at(*board, .{x, y}) & .BORDER continue;
+            if at(*board, rotate_to_board(*board_interface, .{x, y})) & .BORDER continue;
 
             Simp.immediate_quad(board_corner.x+x*tile_l,board_corner.y+y*tile_l,board_corner.x+(x+1)*tile_l,board_corner.y+(y+1)*tile_l,color1);
             Simp.immediate_quad(board_corner.x+(x+border)*tile_l,board_corner.y+(y+border)*tile_l,board_corner.x+(x+1-border)*tile_l,board_corner.y+(y+1-border)*tile_l,color2);
@@ -225,7 +205,7 @@ draw_one_frame :: (time: float64, dt : float) {
         text_width = text_width - text_width/20; // @Cleanup hax for bad font
         
         for x: 0..rules.diam-1 for y: 0..rules.diam-1 {
-            cell := at(*board, .{x, y});
+            cell := at(*board, rotate_to_board(*board_interface, .{x, y}));
             if cell & .BORDER || !(cell & .FIGURE) continue;
             
             king := cast(bool) cell & .KING_ANY;
@@ -313,22 +293,24 @@ draw_one_frame :: (time: float64, dt : float) {
     }*/
     // Draw selection
     {
-        if selected_tile.x != -1 {
+        if board_interface.selected != .{-1, -1} {
+            selected := rotate_to_player(*board_interface, board_interface.selected);
             Simp.set_shader_for_color(true);
             theta := cast(float) fmod_cycling(time*4, TAU);
             color := Vector4.{1.,1.,1.,1.};
             color.w = -cos(theta)*.1+.4;
-            Simp.immediate_quad(board_corner.x+selected_tile.x*tile_l,board_corner.y+selected_tile.y*tile_l,board_corner.x+(selected_tile.x+1)*tile_l,board_corner.y+(selected_tile.y+1)*tile_l,color);
+            Simp.immediate_quad(board_corner.x+selected.x*tile_l,board_corner.y+selected.y*tile_l,board_corner.x+(selected.x+1)*tile_l,board_corner.y+(selected.y+1)*tile_l,color);
         }
     }
     // Draw mouseover
     {
-        if mouse_over.x != -1 {
+        if board_interface.cursor != .{-1, -1} {
+            cursor := rotate_to_player(*board_interface, board_interface.cursor);
             Simp.set_shader_for_color(true);
             theta := cast(float) fmod_cycling(time*4, TAU);
             color := Vector4.{1.,1.,1.,1.};
             color.w = cos(theta)*.1+.4;
-            Simp.immediate_quad(board_corner.x+mouse_over.x*tile_l,board_corner.y+mouse_over.y*tile_l,board_corner.x+(mouse_over.x+1)*tile_l,board_corner.y+(mouse_over.y+1)*tile_l,color);
+            Simp.immediate_quad(board_corner.x+cursor.x*tile_l,board_corner.y+cursor.y*tile_l,board_corner.x+(cursor.x+1)*tile_l,board_corner.y+(cursor.y+1)*tile_l,color);
         }
     }
     // Draw timers
