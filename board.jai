@@ -1,6 +1,6 @@
 #import "Basic";
 // #poke_name Basic operator==;
-#import,dir "../kscurses";
+using,except(Color) KS :: #import,dir "../kscurses";
 #import "Math";
 
 my_array_find :: (array: [] $T, item: T) -> bool, s64 {
@@ -203,7 +203,6 @@ upgrade :: (c : Cell) -> Cell {
 gen_step_move :: (using board : *Board, from : ivec2, to : ivec2) -> Step {
 	return .{type = .MOVE, data_move = .{from = from, to = to}};
 }
-
 gen_step_capture :: (using board : *Board, from : ivec2, to : ivec2, dir : ivec2) -> Step {
 	killed := at(board, to - dir);
 	return .{type = .CAPTURE, data_capture = .{from = from, to = to, dir = dir, killed = killed}};
@@ -281,25 +280,36 @@ get_last_step_view :: (using board : *Board) -> []Step {
 // 	//===
 // }
 
-move :: (using board : *Board, from : ivec2, to : ivec2) {
+move :: (using board : *Board, from : ivec2, to : ivec2) -> nodes:int {
+	nodes := 1;
 	step := gen_step_move(board, from, to);
 	apply(board, step);
 	step2 := gen_step_upgrade(board, to);
-	if step2.type == .UPGRADE then apply(board, step2);
+	if step2.type == .UPGRADE {
+		apply(board, step2);
+		nodes += 1;
+	}
+	return nodes;
 }
-capture :: (using board : *Board, from : ivec2, to : ivec2, dir : ivec2) {
+capture :: (using board : *Board, from : ivec2, to : ivec2, dir : ivec2) -> nodes:int {
+	nodes := 1;
 	step := gen_step_capture(board, from, to, dir);
 	apply(board, step);
 	step2 := gen_step_upgrade(board, to);
-	if step2.type == .UPGRADE then apply(board, step2);
+	if step2.type == .UPGRADE {
+		apply(board, step2);
+		nodes += 1;
+	}
+	return nodes;
 }
 
-end_step :: (using board : *Board) {
+end_step :: (using board : *Board) -> nodes:int {
 	step := gen_step_end(board);
 	apply(board, step);
+	return 1;
 }
 
-try_step :: (using board : *Board, from : ivec2, to : ivec2) -> enum u8 {NONE; MOVE; CAPTURE; ENDSEQ;} {
+try_step :: (using board : *Board, from : ivec2, to : ivec2) -> enum u8 {NONE; MOVE; CAPTURE; ENDSEQ;}, nodes : int {
 	ready_for_move :: (board : *Board, from : ivec2, length : s32, max_length : s32, dir : ivec2, move_dirs : [4]ivec2) -> bool {
 		if length < 1 || length > max_length || !my_array_find(move_dirs, dir) then return false;
 		for i : 1..length if is_obstacle(at(board, from + dir * i)) return false;
@@ -318,36 +328,38 @@ try_step :: (using board : *Board, from : ivec2, to : ivec2) -> enum u8 {NONE; M
 		return true;
 	}
 
+	nodes := 0;
+
 	dir, length := get_dir_and_length(from, to);
 	cell := at(board, from);
 	max_length, capture_dirs, move_dirs := get_properties(cell, rules);
 
-	if !is_owned_by(cell, current_player) return .NONE;
+	if !is_owned_by(cell, current_player) return .NONE, nodes;
 
 	if active_figure != .{-1, -1} then {
-		if from != active_figure then return .NONE;
+		if from != active_figure then return .NONE, nodes;
 
 		if length == 0 {
-			end_step(board);
-			return .ENDSEQ;
+			nodes += end_step(board);
+			return .ENDSEQ, nodes;
 		}
 		if dir != .{} && dir != -last_capture_dir && ready_for_capture(board, from, length, max_length, dir, capture_dirs) {
-			capture(board, from, to, dir);
-			return .CAPTURE;
+			nodes += capture(board, from, to, dir);
+			return .CAPTURE, nodes;
 		}
 	} else {
-		if dir == .{} return .NONE;
+		if dir == .{} return .NONE, nodes;
 		if !should_current_player_capture(board) && ready_for_move(board, from, length, max_length, dir, move_dirs) {
-			move(board, from, to);
-			end_step(board);
-			return .MOVE;
+			nodes += move(board, from, to);
+			nodes += end_step(board);
+			return .MOVE, nodes;
 		}
 		if ready_for_capture(board, from, length, max_length, dir, capture_dirs) {
-			capture(board, from, to, dir);
-			return .CAPTURE;
+			nodes += capture(board, from, to, dir);
+			return .CAPTURE, nodes;
 		}
 	}
-	return .NONE;
+	return .NONE, nodes;
 }
 
 what_can_do :: (using board : *Board, pos : ivec2) -> can_capture:bool, can_move:bool {
@@ -427,21 +439,26 @@ Board_Interface :: struct {
 	selected := ivec2.{-1, -1};
 	cursor := ivec2.{0, 0};
 }
-click :: (using board_interface : *Board_Interface) {
-	if player_me != 4 && player_me != current_player return;
+click :: (using board_interface : *Board_Interface) -> nodes:int {
+	if player_me != 4 && player_me != current_player return 0;
+
+	is_clickable :: (using board : *Board, pos : ivec2) -> bool {
+		if !is_owned_by(at(board, pos), current_player) return false;
+		can_capture, can_move := what_can_do(board, pos);
+		if (should_current_player_capture(board) || !can_move) && !can_capture return false;
+		return true;
+	}
 
 	if selected == .{-1, -1} then {
-		if !is_owned_by(at(board, cursor), current_player) return;
-		can_capture, can_move := what_can_do(board, cursor);
-		if (should_current_player_capture(board) || !can_move) && !can_capture return;
-		selected = cursor;
+		if is_clickable(board, cursor) selected = cursor;
+		return 0;
 	} else {
-		result := try_step(board, selected,	cursor);
+		result, nodes := try_step(board, selected,	cursor);
 		if result == {
 			case .NONE;
 			if selected == cursor {
 				selected = .{-1, -1};
-			} else if is_owned_by(at(board, cursor), current_player) {
+			} else if is_clickable(board, cursor) {
 				selected = cursor;
 			}
 
@@ -455,8 +472,13 @@ click :: (using board_interface : *Board_Interface) {
 			selected = cursor;
 			can_capture, can_move := what_can_do(board, selected);
 			if !can_capture {
-				click(board_interface);
+				result2, nodes2 := try_step(board, selected, selected);
+				assert(result2 == .ENDSEQ);
+				nodes += nodes2;
+				selected = .{-1, -1};
+				// click(board_interface);
 			}
 		}
+		return nodes;
 	}
 }
