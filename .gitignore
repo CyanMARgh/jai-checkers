@@ -32,3 +32,6 @@ bin/
 # macos
 
 *.DS_Store
+
+*.elf
+*.exe

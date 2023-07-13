@@ -5,24 +5,32 @@ DEBUG :: false;
 
 #run {
 	set_build_options_dc(.{do_output=false});
-	build_rl_version();
+	build(.RAYLIB);
 }
 
 #if OS == .LINUX {
-	EXECUTABLE_SUFFIX :: "_linux.elf";
+	EXECUTABLE_SUFFIX :: "elf";
 } else #if OS == .WINDOWS {
-	EXECUTABLE_SUFFIX :: "_windows.exe";
+	EXECUTABLE_SUFFIX :: "exe";
 } else {
 	#run assert(false, "invalid OS");
 }
 
-build_rl_version :: () {
+build :: (outfit : enum u8 {KSCURSES; SIMP; RAYLIB;}) {
 	w := compiler_create_workspace();
 	if !w {
 		print("Workspace createion failed!\n");
 		return;
 	}
 	target_options := get_build_options(w);
+
+	outfit_suffix : string;
+	ifx #complete outfit == {
+		case .KSCURSES; outfit_suffix = "ks";
+		case .RAYLIB; outfit_suffix = "rl";
+		case .SIMP; outfit_suffix = "simp";
+	}
+	
 	{
 		using target_options;
 		text_output_flags = 0;
@@ -39,11 +47,15 @@ build_rl_version :: () {
 			backtrace_on_crash = .OFF;
 		}
 
-		output_executable_name = sprint("checkers_rl%", EXECUTABLE_SUFFIX);
+		output_executable_name = sprint("checkers_%1%2.%3", 
+			outfit_suffix,
+			ifx DEBUG then "_debug" else "",
+			EXECUTABLE_SUFFIX
+		);
 	}
 	set_build_options(target_options, w);
 	compiler_begin_intercept(w);
-	add_build_file(tprint("%/rl_version.jai", #filepath), w);
+	add_build_file(tprint("%1/%2_version.jai", #filepath, outfit_suffix), w);
 	#if OS == .WINDOWS add_build_string("#run (#import \"Windows_Resources\").disable_runtime_console();", w);
 	add_build_string(sprint("DEBUG :: %;\n", DEBUG), w);
 

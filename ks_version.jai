@@ -17,7 +17,7 @@ handle_key_board_interface :: (using board_interface : *Board_Interface, key : K
 }
 c_draw_board :: (canvas : *Canvas, using board_interface : Board_Interface, offset : ivec2, show_cursor : bool) {
 	i := 0;
-	current_player_color := Color.[.BRIGHT_BLACK, .BLUE, .RED, .GREEN][current_player];
+	current_player_color := KS.Color.[.BRIGHT_BLACK, .BLUE, .RED, .GREEN][current_player];
 
 	for y_c : 0..diam-1 {
 		for x_c : 0..2*diam-1 {
@@ -29,13 +29,13 @@ c_draw_board :: (canvas : *Canvas, using board_interface : Board_Interface, offs
 			pos := ivec2.{xx x, xx y};
 			cell := at(board, pos);
 
-			background : Color = 
+			background : KS.Color = 
 				ifx pos == cursor && show_cursor then .BRIGHT_YELLOW else 
 				ifx pos == selected then .BRIGHT_MAGENTA else 
 				ifx cell & .BORDER then current_player_color else
 				ifx (x + y) % 2 then .WHITE else
 				.BRIGHT_WHITE;
-			foreground : Color =
+			foreground : KS.Color =
 				ifx cell & .BLACK then .BLACK else
 				ifx cell & .BLUE then .BRIGHT_BLUE else
 				ifx cell & .RED then .RED else
