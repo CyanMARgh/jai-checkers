@@ -18,7 +18,7 @@ Game_Data :: struct {
 		MOVE;
 	} = .FIXED;
 
-	camera := Camera.{.{7, 3, 0}, .{0, 0, 0}, .{0, 1, 0}, 45, 0};
+	camera := Camera.{.{7, 5, 0}, .{0, 0, 0}, .{0, 1, 0}, 45, 0};
 
 	BACKGROUND_COLORS :: Vector3.[
 		.{100, 100, 100},
