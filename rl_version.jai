@@ -18,7 +18,7 @@ Game_Data :: struct {
 		MOVE;
 	} = .FIXED;
 
-	camera := Camera.{.{7, 5, 0}, .{0, 0, 0}, .{0, 1, 0}, 45, 0};
+	camera := Camera.{.{7, 3, 0}, .{0, 0, 0}, .{0, 1, 0}, 45, 0};
 
 	BACKGROUND_COLORS :: Vector3.[
 		.{100, 100, 100},
@@ -90,8 +90,25 @@ process_input :: (using game_data : *Game_Data) {
 
 find_intersection :: (using game_data : *Game_Data) {
 	ray := GetMouseRay(GetMousePosition(), camera);
-	S := Vector3.{xx board.diam, 1, xx board.diam} * .5;
+	S := Vector3.{xx board.diam * .5, .3, xx board.diam * .5};
 	c0 := GetRayCollisionBox(ray, .{-.5 * S, .5 * S});
+
+	for y : 0..board.diam-1 {
+		for x : 0..board.diam-1 {
+			cell := at(*board, .{xx x, xx y});
+			pos := to_vec3(*board, x, y);
+			if cell & .FIGURE {
+				height := .3;
+				radius := .2;
+
+				c1 := GetRayCollisionCylinder(ray, pos, pos + Vector3.{0, height, 0}, radius);
+				if c1.hit && c1.distance < c0.distance {
+					c0 = c1;
+				}
+			}
+		}
+	}
+
 	ipos : ivec2;
 	if c0.hit {
 		pos := c0.point + .5 * S;
@@ -108,14 +125,14 @@ find_intersection :: (using game_data : *Game_Data) {
 	board_interface.cursor = ipos;
 }
 
+to_vec3 :: (using board : *Board, x : int, y : int) -> Vector3 {
+	return (Vector3.{xx x, 0, xx y} - Vector3.{xx(diam - 1), 0, xx(diam - 1)} * .5) * .5;
+};
 draw_scene :: (using game_data : Game_Data) {
 	BeginDrawing(); defer EndDrawing();
 	// ClearBackground(GRAY);
 	ClearBackground(.{xx background.x, xx background.y, xx background.z, 255});
 
-	to_vec3 :: (x : int, y : int) -> Vector3 #expand {
-		return (Vector3.{xx x, 0, xx y} - Vector3.{xx(diam - 1), 0, xx(diam - 1)} * .5) * .5;
-	};
 	BeginMode3D(camera);
 		// DrawGrid(10, 1.0);
 		using,except(rules) board;
@@ -124,7 +141,7 @@ draw_scene :: (using game_data : Game_Data) {
 			for x : 0..diam-1 {
 				defer i += 1;
 				cell := at(*board, .{xx x, xx y});
-				pos := to_vec3(x, y);
+				pos := to_vec3(*board, x, y);
 				if !(cell & .BORDER) {
 					DrawCube(pos, .5, .3, .5, ifx (y + x) % 2 then WHITE else RAYWHITE);
 				}
@@ -147,17 +164,18 @@ draw_scene :: (using game_data : Game_Data) {
 			cursor := board_interface.cursor;
 			if cursor != .{-1, -1} then {
 				assert(cursor_collision.hit);
-				DrawCube(to_vec3(cursor.x, cursor.y), .6, .4, .6, .{0, 255, 0, 30});
 
 				p1 := cursor_collision.point;
 				p2 := p1 + .2 * cursor_collision.normal;
 				DrawCube(p1, .05, .05, .05, SKYBLUE);
 				DrawLine3D(p1, p2, BLUE);
+
+				DrawCube(to_vec3(*board, cursor.x, cursor.y), .6, .4, .6, .{0, 255, 0, 30});
 			}
 		}
 		selected := board_interface.selected;
 		if selected != .{-1, -1} then {
-			DrawCube(to_vec3(selected.x, selected.y), .55, .35, .55, .{255, 0, 255, 30});
+			DrawCube(to_vec3(*board, selected.x, selected.y), .55, .35, .55, .{255, 0, 255, 30});
 		} 
 	EndMode3D();
 	DrawFPS(20, 20);
