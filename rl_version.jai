@@ -6,8 +6,11 @@ using RL;
 
 #load "board.jai";
 
+// DEBUG :: false;
+
 Game_Data :: struct {
-	rules := Rules.{diam = 12, cutoff = 2, rows = 2, must_capture = true};
+	// rules := Rules.{diam = 12, cutoff = 2, rows = 2, must_capture = true};
+	rules := Rules.{diam = 16, cutoff = 4, rows = 2, rows_offset = 1, must_capture = true, diagonal = false};
 	board : Board;
 	board_interface : Board_Interface;
 
@@ -21,7 +24,7 @@ Game_Data :: struct {
 	camera := Camera.{.{7, 5, 0}, .{0, 0, 0}, .{0, 1, 0}, 45, 0};
 
 	BACKGROUND_COLORS :: Vector3.[
-		.{100, 100, 100},
+		.{150, 150, 150},
 		.{200, 200, 255},
 		.{255, 200, 200},
 		.{200, 255, 200}
@@ -31,6 +34,7 @@ Game_Data :: struct {
 }
 
 init_game :: (using game_data : *Game_Data) {
+	camera.position = Vector3.{8, 6, 0} * (cast(float)rules.diam / 16);
 	init(*board, *rules);
 	board_interface.board = *board;
 }
@@ -45,8 +49,10 @@ main :: () {
 	init_game(*game_data); defer deinit_game(*game_data);
 
 	W0, H0 :: 1200, 800;
+	SetConfigFlags(xx ConfigFlags.WINDOW_RESIZABLE);
 	InitWindow(W0, H0, "c4eckers?"); defer CloseWindow();
 	SetTargetFPS(60);
+
 	{
 		center := GetWindowPosition() + Vector2.{600, 400};
 		SetMousePosition(xx center.x, xx center.y);
@@ -165,10 +171,12 @@ draw_scene :: (using game_data : Game_Data) {
 			if cursor != .{-1, -1} then {
 				assert(cursor_collision.hit);
 
-				p1 := cursor_collision.point;
-				p2 := p1 + .2 * cursor_collision.normal;
-				DrawCube(p1, .05, .05, .05, SKYBLUE);
-				DrawLine3D(p1, p2, BLUE);
+				#if DEBUG {
+					p1 := cursor_collision.point;
+					p2 := p1 + .2 * cursor_collision.normal;
+					DrawCube(p1, .05, .05, .05, SKYBLUE);
+					DrawLine3D(p1, p2, BLUE);					
+				}
 
 				DrawCube(to_vec3(*board, cursor.x, cursor.y), .6, .4, .6, .{0, 255, 0, 30});
 			}
@@ -178,5 +186,5 @@ draw_scene :: (using game_data : Game_Data) {
 			DrawCube(to_vec3(*board, selected.x, selected.y), .55, .35, .55, .{255, 0, 255, 30});
 		} 
 	EndMode3D();
-	DrawFPS(20, 20);
+	#if DEBUG DrawFPS(20, 20);
 }
