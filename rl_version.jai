@@ -19,6 +19,15 @@ Game_Data :: struct {
 	} = .FIXED;
 
 	camera := Camera.{.{7, 5, 0}, .{0, 0, 0}, .{0, 1, 0}, 45, 0};
+
+	BACKGROUND_COLORS :: Vector3.[
+		.{100, 100, 100},
+		.{200, 200, 255},
+		.{255, 200, 200},
+		.{200, 255, 200}
+	];
+
+	background := BACKGROUND_COLORS[0];
 }
 
 init_game :: (using game_data : *Game_Data) {
@@ -37,32 +46,45 @@ main :: () {
 
 	W0, H0 :: 1200, 800;
 	InitWindow(W0, H0, "c4eckers?"); defer CloseWindow();
-	DisableCursor();
 	SetTargetFPS(60);
+	{
+		center := GetWindowPosition() + Vector2.{600, 400};
+		SetMousePosition(xx center.x, xx center.y);
+	}
 
 	while !WindowShouldClose() {
-		if state == .MOVE {
-			UpdateCamera(*camera, .FIRST_PERSON);
-		}
-		find_intersection(*game_data);
-		if state ==  {
-			case .MOVE;
-			if IsKeyPressed(.SPACE) || IsMouseButtonPressed(.LEFT) {
-				state = .FIXED;
-				center := GetWindowPosition() + Vector2.{600, 400};
-				SetMousePosition(xx center.x, xx center.y);
-				EnableCursor();				
-			}
-			case .FIXED;
-			if IsKeyPressed(.SPACE) {
-				state = .MOVE;
-				DisableCursor();			
-			} else if IsMouseButtonPressed(.LEFT) {
-				click(*board_interface);
-			}
-		}
+		process_input(*game_data);
+		simulate(*game_data);
 		draw_scene(game_data);
 		reset_temporary_storage();
+	}
+}
+
+simulate :: (using game_data : *Game_Data) {
+	if state == .MOVE {
+		UpdateCamera(*camera, .FIRST_PERSON);
+	}
+	dt := min(GetFrameTime(), 1);
+	background = background * (1 - dt) + BACKGROUND_COLORS[board.current_player] * dt;
+}
+
+process_input :: (using game_data : *Game_Data) {
+	find_intersection(game_data);
+	if state ==  {
+		case .MOVE;
+		if IsKeyPressed(.SPACE) || IsMouseButtonPressed(.LEFT) {
+			state = .FIXED;
+			center := GetWindowPosition() + Vector2.{600, 400};
+			SetMousePosition(xx center.x, xx center.y);
+			EnableCursor();
+		}
+		case .FIXED;
+		if IsKeyPressed(.SPACE) {
+			state = .MOVE;
+			DisableCursor();			
+		} else if IsMouseButtonPressed(.LEFT) {
+			click(*board_interface);
+		}
 	}
 }
 
@@ -88,7 +110,8 @@ find_intersection :: (using game_data : *Game_Data) {
 
 draw_scene :: (using game_data : Game_Data) {
 	BeginDrawing(); defer EndDrawing();
-	ClearBackground(GRAY);
+	// ClearBackground(GRAY);
+	ClearBackground(.{xx background.x, xx background.y, xx background.z, 255});
 
 	to_vec3 :: (x : int, y : int) -> Vector3 #expand {
 		return (Vector3.{xx x, 0, xx y} - Vector3.{xx(diam - 1), 0, xx(diam - 1)} * .5) * .5;
