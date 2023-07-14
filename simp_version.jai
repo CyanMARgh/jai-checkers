@@ -133,7 +133,7 @@ main :: () {
             if mouse_over.x != -1 {
                 if selected_tile.x == -1 {
                     if is_owned_by(at(*board, mouse_over), moving_player) &&
-                       (!should_current_player_kill(*board) || can_kill(*board, mouse_over))
+                       (!should_current_player_capture(*board) || what_can_do(*board, mouse_over))
                     then selected_tile = mouse_over;
                 } else {
                     if selected_tile == mouse_over selected_tile.x = -1;
@@ -145,7 +145,7 @@ main :: () {
                             case .MOVE; #through;
                             case .ENDSEQ;
                                 selected_tile.x = -1;
-                            case .KILL;
+                            case .CAPTURE;
                                 selected_tile = mouse_over;
                                 // Can't have an extra hacky click behind the scenes in this game
                         }
