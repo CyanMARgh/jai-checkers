@@ -1,9 +1,10 @@
 # checkers
 just checkers for four, nothing fancy
+
 `tested on compiler version 0.1.070`
 
 # how to build
-There are 3 GUI versions available: Simp (2D for now), kscurses (TUI) and raylib (3D). For any of them, in first.jai inside the top `#run {}` block, you must specify the desired one. For example:
+There are 3 game interfaces available: Simp (2D for now), kscurses (TUI) and raylib (3D). For any of them, in first.jai inside the top `#run {}` block, you must specify the desired one. For example:
 ```
 ...
 #run {
