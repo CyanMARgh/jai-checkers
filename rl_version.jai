@@ -21,7 +21,7 @@ Game_Data :: struct {
 		MOVE;
 	} = .FIXED;
 
-	camera := Camera.{.{7, 5, 0}, .{0, 0, 0}, .{0, 1, 0}, 45, 0};
+	camera : Camera;
 
 	BACKGROUND_COLORS :: Vector3.[
 		.{150, 150, 150},
@@ -34,7 +34,7 @@ Game_Data :: struct {
 }
 
 init_game :: (using game_data : *Game_Data) {
-	camera.position = Vector3.{8, 6, 0} * (cast(float)rules.diam / 16);
+	reset_camera(game_data);
 	init(*board, *rules);
 	board_interface.board = *board;
 }
@@ -68,29 +68,56 @@ main :: () {
 
 simulate :: (using game_data : *Game_Data) {
 	if state == .MOVE {
-		UpdateCamera(*camera, .FIRST_PERSON);
+		move_camera(*camera);
 	}
 	dt := min(GetFrameTime(), 1);
 	background = background * (1 - dt) + BACKGROUND_COLORS[board.current_player] * dt;
+}
+
+move_camera :: (camera : *Camera) {
+	dt := GetFrameTime();
+	{
+		speed := 5.;
+		x := cast(float)(cast(int)IsKeyDown(.D)) - (cast(int)IsKeyDown(.A));
+		y := cast(float)(cast(int)IsKeyDown(.SPACE)) - (cast(int)IsKeyDown(.LEFT_SHIFT));
+		z := cast(float)(cast(int)IsKeyDown(.W)) - (cast(int)IsKeyDown(.S));
+
+		CameraMoveRight(camera, speed * x * dt, true);
+		CameraMoveUp(camera, speed * y * dt);
+		CameraMoveForward(camera, speed * z * dt, true);		
+	}
+	{
+		speed := .0025;
+		delta := GetMouseDelta();
+		CameraYaw(camera, -delta.x * speed, false);
+		CameraPitch(camera, -delta.y * speed, true, false, false);
+	}
+}
+
+reset_camera :: (using game_data : *Game_Data) {
+	camera = Camera.{Vector3.{8, 6, 0} * (cast(float)rules.diam / 16), .{0, 0, 0}, .{0, 1, 0}, 45, 0};
 }
 
 process_input :: (using game_data : *Game_Data) {
 	find_intersection(game_data);
 	if state ==  {
 		case .MOVE;
-		if IsKeyPressed(.SPACE) || IsMouseButtonPressed(.LEFT) {
+		if IsKeyPressed(.TAB) || IsMouseButtonPressed(.LEFT) {
 			state = .FIXED;
 			center := GetWindowPosition() + Vector2.{600, 400};
 			SetMousePosition(xx center.x, xx center.y);
 			EnableCursor();
 		}
 		case .FIXED;
-		if IsKeyPressed(.SPACE) {
+		if IsKeyPressed(.TAB) {
 			state = .MOVE;
 			DisableCursor();			
 		} else if IsMouseButtonPressed(.LEFT) {
 			click(*board_interface);
 		}
+	}
+	if IsKeyPressed(.R) {
+		reset_camera(game_data);
 	}
 }
 
