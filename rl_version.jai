@@ -1,7 +1,7 @@
 #import "Basic"()(MEMORY_DEBUGGER=true);
 #import "Math";
 #import "Random";
-#import,dir "raylib-jai-linux/Raylib";
+#import,dir "../rfoeraylib/Raylib";
 using RL;
 
 #load "board.jai";
@@ -49,7 +49,8 @@ main :: () {
 	init_game(*game_data); defer deinit_game(*game_data);
 
 	W0, H0 :: 1200, 800;
-	SetConfigFlags(xx ConfigFlags.WINDOW_RESIZABLE);
+	SetConfigFlags(.WINDOW_RESIZABLE);
+    SetConfigFlags(.MSAA_4X_HINT);
 	InitWindow(W0, H0, "c4eckers?"); defer CloseWindow();
 	SetTargetFPS(60);
 
