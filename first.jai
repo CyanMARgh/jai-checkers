@@ -5,7 +5,7 @@ DEBUG :: false;
 
 #run {
 	set_build_options_dc(.{do_output=false});
-	build(.SIMP);
+	build(.KSCURSES);
 }
 
 #if OS == .LINUX {
