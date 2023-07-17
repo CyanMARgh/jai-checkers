@@ -1,0 +1,3 @@
+[submodule "raylib-jai-linux"]
+	path = raylib-jai-linux
+	url = ./raylib-jai-linux
