@@ -1,7 +1,7 @@
 #import "Basic"()(MEMORY_DEBUGGER=true);
 #import "Math";
 #import "Random";
-#import,dir "../rfoeraylib/Raylib";
+#import,dir "raylib-jai-linux/Raylib";
 using RL;
 
 #load "board.jai";
