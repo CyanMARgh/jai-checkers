@@ -80,6 +80,7 @@ Board :: struct {
 	current_player := 0;
 
 	history : [..]Step;
+	uncommited_count := 0;
 
 	active_figure := ivec2.{-1, -1};
 	last_capture_dir := ivec2.{0, 0};
@@ -226,7 +227,7 @@ gen_step_move :: (using board : *Board, from : ivec2, to : ivec2) -> Step {
 	return .{type = .MOVE, data_move = .{from = from, to = to}};
 }
 gen_step_capture :: (using board : *Board, from : ivec2, to : ivec2, dir : ivec2) -> Step {
-	killed := at(board, to - dir);
+	killed := at(board, to - dir) & .FIGURE;
 	return .{type = .CAPTURE, data_capture = .{from = from, to = to, dir = dir, killed = killed}};
 }
 gen_step_upgrade :: (using board : *Board, pos : ivec2) -> Step {
@@ -247,12 +248,8 @@ apply :: (using board : *Board, step : Step) {
 	if #complete step.type == {
 		case .MOVE; using step.data_move; 
 		c1, c2 := at_ptr(board, from), at_ptr(board, to);
-		// log("from: %(%), to: %(%)\n", from, c1.*, to, c2.*);
 		c2.* |= c1.* & .FIGURE;
-		// log("from: %(%), to: %(%)\n", from, c1.*, to, c2.*);
 		c1.* &= .BOARD_PROPS;
-		// log("from: %(%), to: %(%)\n", from, c1.*, to, c2.*);
-		// log("move\n");
 
 		case .CAPTURE; using step.data_capture;
 		c1, c2, c3 := at_ptr(board, from), at_ptr(board, to), at_ptr(board, to - dir);
@@ -267,22 +264,22 @@ apply :: (using board : *Board, step : Step) {
 		active_figure = to;
 		last_capture_dir = dir;
 
-		// log("capture\n");
 		case .UPGRADE; using step.data_upgrade;
 		<<at_ptr(board, pos) = aft;
 
-		// log("upgrade\n");
 		case .STEPEND; using step.data_stepend;
 		active_figure = .{-1, -1};
 		last_capture_dir = .{};
 		current_player = player_new;
 
-		// log("step end\n");
-		case .INVALID;
-		assert(false);
-		case .NONE;
-		assert(false);
+		case .INVALID; assert(false);
+		case .NONE; assert(false);
 	}
+}
+
+apply_and_write :: (using board : *Board, step : Step) {
+	assert(uncommited_count == 0);
+	apply(board, step);
 	array_add(*(board.history), step);
 }
 
@@ -301,10 +298,59 @@ get_last_step_view :: (using board : *Board) -> []Step {
 	return view;
 }
 
-// undo_single :: (using board : *Board) {
-// 	// step := pop(history);
-// 	//===
-// }
+undo_single :: (using board : *Board) {
+	assert(history.count > 0);
+	uncommited_count += 1;
+	step := history[history.count - uncommited_count];
+
+	update_dir_and_active_figure :: (using board : *Board) {
+		if history.count > uncommited_count {			
+			prev_step := history[history.count - uncommited_count - 1];
+			if prev_step.type == .CAPTURE {
+				last_capture_dir = prev_step.data_capture.dir;
+				active_figure = prev_step.data_capture.to;				
+			}
+		}
+	}
+
+	if #complete step.type == {
+		case .MOVE; using step.data_move; 
+		c1, c2 := at_ptr(board, from), at_ptr(board, to);
+		c1.* |= c2.* & .FIGURE;
+		c2.* &= .BOARD_PROPS;
+
+		case .CAPTURE; using step.data_capture;
+		c1, c2, c3 := at_ptr(board, from), at_ptr(board, to), at_ptr(board, to - dir);
+		c1.* |= c2.* & .FIGURE;
+		c2.* &= .BOARD_PROPS;
+
+		killed_player := get_player_by_code(killed);
+		assert(killed_player != 4);
+		alive_count[killed_player] += 1;
+
+		<<c3 |= killed;
+		active_figure = .{-1, -1};
+		last_capture_dir = .{0, 0};
+		update_dir_and_active_figure(board);
+
+		case .UPGRADE; using step.data_upgrade;
+		<<at_ptr(board, pos) = bef;
+
+		case .STEPEND; using step.data_stepend;
+		assert(active_figure == .{-1, -1});
+		assert(last_capture_dir == .{0, 0});
+		update_dir_and_active_figure(board);
+		current_player = player_old;
+
+		case .INVALID; assert(false);
+		case .NONE; assert(false);
+	}
+}
+redo_single :: (using board : *Board) {
+	step := history[history.count - uncommited_count];
+	uncommited_count -= 1;
+	apply(board, step);
+}
 // undo_full :: (board : *Board) {
 // 	//===
 // }
@@ -312,10 +358,10 @@ get_last_step_view :: (using board : *Board) -> []Step {
 move :: (using board : *Board, from : ivec2, to : ivec2) -> nodes:int {
 	nodes := 1;
 	step := gen_step_move(board, from, to);
-	apply(board, step);
+	apply_and_write(board, step);
 	step2 := gen_step_upgrade(board, to);
 	if step2.type == .UPGRADE {
-		apply(board, step2);
+		apply_and_write(board, step2);
 		nodes += 1;
 	}
 	return nodes;
@@ -323,10 +369,10 @@ move :: (using board : *Board, from : ivec2, to : ivec2) -> nodes:int {
 capture :: (using board : *Board, from : ivec2, to : ivec2, dir : ivec2) -> nodes:int {
 	nodes := 1;
 	step := gen_step_capture(board, from, to, dir);
-	apply(board, step);
+	apply_and_write(board, step);
 	step2 := gen_step_upgrade(board, to);
 	if step2.type == .UPGRADE {
-		apply(board, step2);
+		apply_and_write(board, step2);
 		nodes += 1;
 	}
 	return nodes;
@@ -334,7 +380,7 @@ capture :: (using board : *Board, from : ivec2, to : ivec2, dir : ivec2) -> node
 
 end_step :: (using board : *Board) -> nodes:int {
 	step := gen_step_end(board);
-	apply(board, step);
+	apply_and_write(board, step);
 	return 1;
 }
 
@@ -473,14 +519,15 @@ Board_Interface :: struct {
 }
 click :: (using board_interface : *Board_Interface) -> nodes:int {
 	if player_me != 4 && player_me != current_player return 0;
-
+	assert(uncommited_count >= 0);
+	if uncommited_count return 0;
+	assert(cursor.x >= 0 && cursor.y >= 0 && cursor.x < diam && cursor.y < diam);
 	is_clickable :: (using board : *Board, pos : ivec2) -> bool {
 		if !is_owned_by(at(board, pos), current_player) return false;
 		can_capture, can_move := what_can_do(board, pos);
 		if (should_current_player_capture(board) || !can_move) && !can_capture return false;
 		return true;
 	}
-
 	if selected == .{-1, -1} then {
 		if is_clickable(board, cursor) selected = cursor;
 		return 0;

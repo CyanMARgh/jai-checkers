@@ -21,10 +21,9 @@ Game_Data :: struct {
 		FIXED;
 		MOVE;
 	} = .FIXED;
-	mouse_state : enum u8 {
-		FREE;
-		HOLDING;
-	}
+
+	currently_plying_step := Step.{type = .NONE};
+	animation_time := 0.;
 
 	camera : Camera;
 	background := BACKGROUND_COLORS[0];
@@ -96,6 +95,16 @@ simulate :: (using game_data : *Game_Data) {
 	}
 	dt := min(GetFrameTime(), 1);
 	background = background * (1 - dt) + BACKGROUND_COLORS[board.current_player] * dt;
+
+	// animation here
+	// while 1 {
+	// 	step := get_step_to_animate(*board);
+	// 	if #complete step == {
+	// 		case .MOVE
+
+	// 		case
+	// 	}
+	// }
 }
 
 move_camera :: (camera : *Camera, bounds : BoundingBox, speed_factor : float) {
@@ -131,17 +140,12 @@ process_input :: (using game_data : *Game_Data) {
 		}
 		case .FIXED;
 		if IsMouseButtonPressed(.LEFT) {
-			click(*board_interface);
+			nodes := click(*board_interface);
+			log("nodes = %\n", nodes);
 		} else if IsMouseButtonPressed(.RIGHT) {
-			if board_interface.selected != .{-1, -1} then {
-				board_interface.cursor = board_interface.selected;
-				click(*board_interface);
-			} else {
-				state = .MOVE;
-				DisableCursor();
-			}
+			state = .MOVE;
+			DisableCursor();
 		}
-
 	}
 	if IsKeyPressed(.R) {
 		reset_camera(game_data);
@@ -248,7 +252,6 @@ draw_scene :: (using game_data : Game_Data) {
 	BeginMode3D(camera);
 		using board;
 		i := 0;
-
 		#if SHINING_BORDERS {
 			time := GetTime();
 		}
@@ -261,9 +264,8 @@ draw_scene :: (using game_data : Game_Data) {
 				if !(cell & .BORDER) {
 					cell_color := get_cell_color(.{xx x, xx y}, rules);
 					#if SHINING_BORDERS if cell & .BOOSTS {
-						h1 := cast(float)get_hash(y + xx get_hash(x)) / U32_MAX;
-						h2 := cast(float)get_hash(x + xx get_hash(y)) / U32_MAX;
-
+						h1 := cast(float)knuth_hash((cast(u64)y) ^ knuth_hash(cast(u64) x)) / U64_MAX;
+						h2 := cast(float)knuth_hash((cast(u64)x) ^ knuth_hash(cast(u64) y)) / U64_MAX;
 						factor := (sin(time * (2 + h1 * 2) + h2 * 10) + 1) * .03;
 						cell_color = mix(cell_color, MAGENTA, xx factor);
 					}

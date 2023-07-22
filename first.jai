@@ -1,7 +1,7 @@
 #import "Basic";
 #import "Compiler";
 
-DEBUG :: false;
+DEBUG :: true;
 
 #run {
 	set_build_options_dc(.{do_output=false});
