@@ -12,10 +12,11 @@ Rules :: struct {
 	diam, cutoff, rows, rows_offset : s32 = 16, 4, 4, 0; 
 	must_capture := false;
 	diagonal := true;
-	// _180_no_scope := false;
-	// upgrade_in_process := true;
+	_180_no_scope := false;
 	leveled_upgrade := false;
+	backward_capture := true;
 	length_by_level := s32.[1, 2, 4, 8];
+	// upgrade_in_process := true;
 	// enable_border := false;
 	// border_period := 20;
 }
@@ -185,6 +186,7 @@ get_properties :: (cell : Cell, rules : Rules) -> length:s32, capture_dirs:[4]iv
 			case; assert(false);
 		}
 	}
+	if !rules.backward_capture then capture_dirs = dirs;
 	return xx length, capture_dirs, dirs;		
 }
 get_dir_and_length :: (from : ivec2, to : ivec2) -> ivec2, s32 {
@@ -370,7 +372,7 @@ try_step :: (using board : *Board, from : ivec2, to : ivec2) -> enum u8 {NONE; M
 			nodes += end_step(board);
 			return .ENDSEQ, nodes;
 		}
-		if dir != .{} && dir != -last_capture_dir && ready_for_capture(board, from, length, max_length, dir, capture_dirs) {
+		if dir != .{} && (_180_no_scope || dir != -last_capture_dir) && ready_for_capture(board, from, length, max_length, dir, capture_dirs) {
 			nodes += capture(board, from, to, dir);
 			return .CAPTURE, nodes;
 		}
@@ -391,6 +393,7 @@ try_step :: (using board : *Board, from : ivec2, to : ivec2) -> enum u8 {NONE; M
 
 what_can_do :: (using board : *Board, pos : ivec2) -> can_capture:bool, can_move:bool {
 	cell := at(board, pos);
+	assert(active_figure == .{-1, -1} || active_figure == pos);
 	assert(!!(cell & .FIGURE_TYPE), "cell = %", cell);
 
 	length, capture_dirs, move_dirs := get_properties(cell, rules);

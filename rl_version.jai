@@ -5,6 +5,7 @@
 using RL;
 
 #load "board.jai";
+#import "Hash";
 
 Game_Data :: struct {
 	board := Board.{
@@ -44,7 +45,7 @@ using visual_properties : struct {
 	SELECTION_GAP :: .05;
 	CYLINDER_QUALITY :: 20;
 
-	SHINING_BORDERS :: false;
+	SHINING_BORDERS :: true;
 	COLOR_ZONES :: true;
 }
 
@@ -233,7 +234,7 @@ draw_scene :: (using game_data : Game_Data) {
 		draw_layer(pos, color_top);
 	}
 
-	cell_color :: (p : ivec2, using rules : Rules) -> Color {
+	get_cell_color :: (p : ivec2, using rules : Rules) -> Color {
 		factor :: .1;
 		if (p.x + p.y) % 2 return WHITE;
 		#if COLOR_ZONES {
@@ -249,9 +250,7 @@ draw_scene :: (using game_data : Game_Data) {
 		i := 0;
 
 		#if SHINING_BORDERS {
-			upgrade_zone_mix_factor := (sin(GetTime() * 3) + 1) * .03;
-		} else {
-			upgrade_zone_mix_factor := 0.;
+			time := GetTime();
 		}
 
 		for y : 0..diam-1 {
@@ -260,9 +259,15 @@ draw_scene :: (using game_data : Game_Data) {
 				cell := at(*board, .{xx x, xx y});
 				pos := to_vec3(*board, x, y);
 				if !(cell & .BORDER) {
-					base_color := cell_color(.{xx x, xx y}, rules);
-					factor := ifx cell & .BOOSTS then upgrade_zone_mix_factor else 0;
-					DrawCube(pos, CELL_SIZE, CELL_HEIGHT, CELL_SIZE, mix(base_color, MAGENTA, xx factor));
+					cell_color := get_cell_color(.{xx x, xx y}, rules);
+					#if SHINING_BORDERS if cell & .BOOSTS {
+						h1 := cast(float)get_hash(y + xx get_hash(x)) / U32_MAX;
+						h2 := cast(float)get_hash(x + xx get_hash(y)) / U32_MAX;
+
+						factor := (sin(time * (2 + h1 * 2) + h2 * 10) + 1) * .03;
+						cell_color = mix(cell_color, MAGENTA, xx factor);
+					}
+					DrawCube(pos, CELL_SIZE, CELL_HEIGHT, CELL_SIZE, cell_color);
 				}
 				if cell & .FIGURE then draw_figure(cell, pos, rules);
 			}
