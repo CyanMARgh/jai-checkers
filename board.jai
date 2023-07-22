@@ -14,11 +14,15 @@ Rules :: struct {
 	diagonal := true;
 	// _180_no_scope := false;
 	// upgrade_in_process := true;
-	// leveled_upgrade := false;
-	// length_by_level := s32.[1, 2, 4, 8];
+	leveled_upgrade := false;
+	length_by_level := s32.[1, 2, 4, 8];
 	// enable_border := false;
 	// border_period := 20;
 }
+RULES_RUSSIAN :: Rules.{must_capture = true};
+RULES_CLASSIC :: Rules.{diagonal = false, leveled_upgrade = true, rows_offset = 1, rows = 2};
+RULES_DEBUG :: Rules.{must_capture = true, diagonal = false, leveled_upgrade = true, rows_offset = 1, rows = 1, diam = 8, cutoff = 2};
+
 Cell :: enum_flags u16 {
 	BLACK		:: 0x0001;
 	BLUE		:: 0x0002;
@@ -68,7 +72,7 @@ Step :: struct {
 // 1) MOVE [, UPGRADE] STEPEND
 // 2) CAPTURE [, UPGRADE], CAPTURE [, UPGRADE], CAPTURE [, UPGRADE] STEPEND
 Board :: struct {
-	using rules : *Rules;
+	using rules : Rules;
 
 	cells : []Cell;
 	alive_count : [4]int;
@@ -88,13 +92,12 @@ at :: (using board : *Board, pos : ivec2) -> Cell {
 	if pos.x < 0 || pos.x >= diam || pos.y < 0 || pos.y >= diam then return .BORDER;
 	return cells[pos.x + diam * pos.y];
 }
-init :: (using board : *Board, _rules : *Rules) {
+init :: (using board : *Board) {
 	// check if valid rules
-	rules = _rules;
 	cells = NewArray(diam * diam, Cell);
 	i := 0;
 
-	dist_and_boost_flag :: (using rules : *Rules, x : s32, y : s32) -> border_dist:s32, corner_dist:s32, Cell, dir_id:s32 {
+	dist_and_boost_flag :: (using rules : Rules, x : s32, y : s32) -> border_dist:s32, corner_dist:s32, Cell, dir_id:s32 {
 		border_dist, dir_id : s32 = diam - 1 - x, 0;
 		if diam - 1 - y < border_dist then border_dist, dir_id = diam - 1 - y, 1;
 		if x < border_dist then border_dist, dir_id = x, 2;
@@ -140,15 +143,32 @@ deinit :: (using board : *Board) {
 	array_free(history);
 }
 // TODO cell_props :: struct {}
-get_properties :: (cell : Cell, rules : *Rules) -> length:s32, capture_dirs:[4]ivec2, dirs:[4]ivec2 {
-	length := ifx cell & .KING_ANY then rules.diam else 1;
-	figure := cell & .FIGURE;
-	if !figure return 0, .[.{},.{},.{},.{}], .[.{},.{},.{},.{}];
+cell_level :: (cell : Cell) -> u8 {
+	assert(!!(cell & .FIGURE_TYPE));
+	level_table :: u8.[
+		0, 1, 1, 2,
+		1, 2, 2, 3,
+		1, 2, 2, 3,
+		2, 3, 3
+	];
+	return level_table[(cell & .KING_ANY) >> 4];
+}
+get_properties :: (cell : Cell, rules : Rules) -> length:s32, capture_dirs:[4]ivec2, dirs:[4]ivec2 {
+	figure_type := cell & .FIGURE_TYPE;
+	figure_boosts := cell & .KING_ANY;
+	if !figure_type return 0, .[.{},.{},.{},.{}], .[.{},.{},.{},.{}];
+
+	length : s32;
+	if rules.leveled_upgrade {
+		length = rules.length_by_level[cell_level(cell)];
+	} else {
+		length = ifx cell & .KING_ANY then rules.diam else 1;
+	}
 
 	capture_dirs, dirs : [4]ivec2;
 	if rules.diagonal {
 		capture_dirs, dirs = .[.{1, 1}, .{-1, 1}, .{1, -1}, .{-1, -1}];
-		if !(cell & .KING_ANY) if figure == {
+		if !figure_boosts if figure_type == {
 			case .BLACK; dirs[0], dirs[2] = .{}, .{};
 			case .BLUE;  dirs[0], dirs[1] = .{}, .{};
 			case .RED;   dirs[1], dirs[3] = .{}, .{};
@@ -157,7 +177,7 @@ get_properties :: (cell : Cell, rules : *Rules) -> length:s32, capture_dirs:[4]i
 		}
 	} else {
 		capture_dirs, dirs = .[.{-1, 0}, .{0, -1}, .{1, 0}, .{0, 1}];
-		if !(cell & .KING_ANY) if figure == {
+		if !figure_boosts if figure_type == {
 			case .BLACK; dirs[2] = .{};
 			case .BLUE;  dirs[3] = .{};
 			case .RED;   dirs[0] = .{};
@@ -225,8 +245,12 @@ apply :: (using board : *Board, step : Step) {
 	if #complete step.type == {
 		case .MOVE; using step.data_move; 
 		c1, c2 := at_ptr(board, from), at_ptr(board, to);
-		<<c2 |= <<c1 & .FIGURE;
-		<<c1 &= .BOARD_PROPS;
+		// log("from: %(%), to: %(%)\n", from, c1.*, to, c2.*);
+		c2.* |= c1.* & .FIGURE;
+		// log("from: %(%), to: %(%)\n", from, c1.*, to, c2.*);
+		c1.* &= .BOARD_PROPS;
+		// log("from: %(%), to: %(%)\n", from, c1.*, to, c2.*);
+		// log("move\n");
 
 		case .CAPTURE; using step.data_capture;
 		c1, c2, c3 := at_ptr(board, from), at_ptr(board, to), at_ptr(board, to - dir);
@@ -241,14 +265,17 @@ apply :: (using board : *Board, step : Step) {
 		active_figure = to;
 		last_capture_dir = dir;
 
+		// log("capture\n");
 		case .UPGRADE; using step.data_upgrade;
 		<<at_ptr(board, pos) = aft;
 
+		// log("upgrade\n");
 		case .STEPEND; using step.data_stepend;
 		active_figure = .{-1, -1};
 		last_capture_dir = .{};
 		current_player = player_new;
 
+		// log("step end\n");
 		case .INVALID;
 		assert(false);
 		case .NONE;
@@ -364,8 +391,10 @@ try_step :: (using board : *Board, from : ivec2, to : ivec2) -> enum u8 {NONE; M
 
 what_can_do :: (using board : *Board, pos : ivec2) -> can_capture:bool, can_move:bool {
 	cell := at(board, pos);
-	assert(!!(cell & .FIGURE_TYPE));
+	assert(!!(cell & .FIGURE_TYPE), "cell = %", cell);
+
 	length, capture_dirs, move_dirs := get_properties(cell, rules);
+
 	assert(length > 0);
 
 	can_capture := false;

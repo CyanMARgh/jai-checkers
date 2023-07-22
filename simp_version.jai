@@ -17,8 +17,9 @@ GAME_VERSION :: "v1";
 
 mouse_over    : ivec2 = .{-1, -1};
 selected_tile : ivec2 = .{-1, -1};
-rules := Rules.{diam=16, cutoff=4, rows=3, rows_offset=0, must_capture=false, diagonal=true};
-board : Board;
+board := Board.{
+    rules = .{diam=16, cutoff=4, rows=3, rows_offset=0, must_capture=false, diagonal=true}
+};
 
 player_colors :: Vector4.[.{.933,.378,.407,1.},.{.424,.964,.273,1.},.{.254,.306,.936,1.},.{.917,.999,.000,1.}, .{0,0,0,1}];
 
@@ -53,10 +54,7 @@ main :: () {
     }
     my_window = create_window(window_width, window_height, #run sprint("% %", GAME_NAME, GAME_VERSION));
     // Init board
-    {
-        board.rules = *rules;
-        init(*board, *rules);
-    }
+    init(*board);
     defer deinit(*board);
 
     // Actual render size in pixels can be different from the window dimensions we specified above (for example on high-resolution displays on macOS/iOS).
@@ -64,7 +62,7 @@ main :: () {
     window_widthf, window_heightf = cast(float) window_width, cast(float) window_height;
     {
         board_side : float = min(window_widthf, window_heightf);
-        tile_l = board_side/rules.diam;
+        tile_l = board_side/board.diam;
         board_corner = .{(window_widthf-board_side)/2, (window_heightf-board_side)/2};
     }
 
@@ -96,7 +94,7 @@ main :: () {
                 window_widthf, window_heightf = cast(float) window_width, cast(float) window_height;
                 {
                     board_side : float = min(window_widthf, window_heightf);
-                    tile_l = board_side/rules.diam;
+                    tile_l = board_side/board.diam;
                     board_corner = .{(window_widthf-board_side)/2, (window_heightf-board_side)/2};
                 }
 
@@ -108,9 +106,9 @@ main :: () {
             x, y, success := get_mouse_pointer_position(my_window, true);
             if success && (x >= cast(int) board_corner.x && y >= cast(int) board_corner.y) {
                 l := min(window_width, window_height);
-                mouse_over.x = cast(s32) (x - cast(s32) board_corner.x)*rules.diam/l;
-                mouse_over.y = cast(s32) (y - cast(s32) board_corner.y)*rules.diam/l;
-                if (mouse_over.x >= rules.diam || mouse_over.y >= rules.diam) mouse_over.x = -1;
+                mouse_over.x = cast(s32) (x - cast(s32) board_corner.x)*board.diam/l;
+                mouse_over.y = cast(s32) (y - cast(s32) board_corner.y)*board.diam/l;
+                if (mouse_over.x >= board.diam || mouse_over.y >= board.diam) mouse_over.x = -1;
                 if at(*board, mouse_over) & .BORDER then mouse_over.x = -1;
             } else mouse_over.x = -1;
         }
@@ -212,7 +210,7 @@ draw_one_frame :: (time: float64, dt : float) {
         color1 :: Vector4.{.2,.15,.1,1.};
         color2 :: Vector4.{.813,.734,.028,1.};
         border :: 0.01;
-        for x: 0..rules.diam-1 for y: 0..rules.diam-1 {
+        for x: 0..board.diam-1 for y: 0..board.diam-1 {
             if at(*board, .{x, y}) & .BORDER continue;
 
             Simp.immediate_quad(board_corner.x+x*tile_l,board_corner.y+y*tile_l,board_corner.x+(x+1)*tile_l,board_corner.y+(y+1)*tile_l,color1);
@@ -224,7 +222,7 @@ draw_one_frame :: (time: float64, dt : float) {
         text_width := Simp.prepare_text(my_emoji_font, "🔘");
         text_width = text_width - text_width/20; // @Cleanup hax for bad font
         
-        for x: 0..rules.diam-1 for y: 0..rules.diam-1 {
+        for x: 0..board.diam-1 for y: 0..board.diam-1 {
             cell := at(*board, .{x, y});
             if cell & .BORDER || !(cell & .FIGURE) continue;
             

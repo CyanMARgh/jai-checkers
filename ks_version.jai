@@ -89,10 +89,11 @@ main :: () {
 
 #scope_file
 
-rules := Rules.{diam = 12, cutoff = 2, rows = 2, must_capture = true};
-// rules := Rules.{diam = 16, cutoff = 4, rows = 2, rows_offset = 1, must_capture = false, diagonal = false};
 
-board : Board;
+board := Board.{
+	rules = .{diam = 12, cutoff = 2, rows = 2, must_capture = true}
+	// rules = .{diam = 16, cutoff = 4, rows = 2, rows_offset = 1, must_capture = false, diagonal = false}
+};
 board_interface : Board_Interface;
 main_canvas : Canvas;
 stop_main : bool;
@@ -100,9 +101,8 @@ blink_state := true;
 
 init_game :: () {
 	board_interface.board = *board;
-	board.rules = *rules;
 
-	init(*board, *rules);
+	init(*board);
 }
 deinit_game :: () {
 	log("%\n", board.history);

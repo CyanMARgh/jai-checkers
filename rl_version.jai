@@ -6,12 +6,12 @@ using RL;
 
 #load "board.jai";
 
-// DEBUG :: false;
-
 Game_Data :: struct {
-	// rules := Rules.{diam = 12, cutoff = 2, rows = 2, must_capture = true};
-	rules := Rules.{diam = 16, cutoff = 4, rows = 2, rows_offset = 1, must_capture = true, diagonal = false};
-	board : Board;
+	board := Board.{
+		// rules = RULES_RUSSIAN
+		// rules = RULES_CLASSIC
+		rules = RULES_DEBUG
+	};
 	board_interface : Board_Interface;
 
 	cursor_collision : RayCollision;
@@ -20,22 +20,37 @@ Game_Data :: struct {
 		FIXED;
 		MOVE;
 	} = .FIXED;
+	mouse_state : enum u8 {
+		FREE;
+		HOLDING;
+	}
 
 	camera : Camera;
+	background := BACKGROUND_COLORS[0];
+}
 
+using visual_properties : struct {
 	BACKGROUND_COLORS :: Vector3.[
 		.{150, 150, 150},
 		.{200, 200, 255},
 		.{255, 200, 200},
 		.{200, 255, 200}
 	];
+	FIGURE_RADIUS :: .2;
+	FIGURE_HEIGHT :: FIGURE_RADIUS * .5;
+	FIGURE_INNER_CIRCLE_RADIUS :: FIGURE_RADIUS * .75;
+	CELL_SIZE :: .5;
+	CELL_HEIGHT :: .3;
+	SELECTION_GAP :: .05;
+	CYLINDER_QUALITY :: 20;
 
-	background := BACKGROUND_COLORS[0];
+	SHINING_BORDERS :: false;
+	COLOR_ZONES :: true;
 }
 
 init_game :: (using game_data : *Game_Data) {
 	reset_camera(game_data);
-	init(*board, *rules);
+	init(*board);
 	board_interface.board = *board;
 }
 deinit_game :: (using game_data : *Game_Data) {
@@ -69,53 +84,63 @@ main :: () {
 
 simulate :: (using game_data : *Game_Data) {
 	if state == .MOVE {
-		move_camera(*camera);
+		R1 := CELL_SIZE * board.diam * 1.3;
+		R2 := CELL_SIZE + FIGURE_HEIGHT * 4 + .1;
+		R3 := R2 + CELL_SIZE * max(board.diam, 8) * 1.25;
+		camera_bounds := BoundingBox.{
+			.{-R1, R2, -R1},
+			.{R1, R3, R1}
+		};
+		move_camera(*camera, camera_bounds, 1.);
 	}
 	dt := min(GetFrameTime(), 1);
 	background = background * (1 - dt) + BACKGROUND_COLORS[board.current_player] * dt;
 }
 
-move_camera :: (camera : *Camera) {
-	dt := GetFrameTime();
-	{
-		speed := 5.;
-		x := cast(float)(cast(int)IsKeyDown(.D)) - (cast(int)IsKeyDown(.A));
-		y := cast(float)(cast(int)IsKeyDown(.SPACE)) - (cast(int)IsKeyDown(.LEFT_SHIFT));
-		z := cast(float)(cast(int)IsKeyDown(.W)) - (cast(int)IsKeyDown(.S));
+move_camera :: (camera : *Camera, bounds : BoundingBox, speed_factor : float) {
+	update_camera_free_move(camera, speed_factor);
 
-		CameraMoveRight(camera, speed * x * dt, true);
-		CameraMoveUp(camera, speed * y * dt);
-		CameraMoveForward(camera, speed * z * dt, true);		
+	clamp :: (v : Vector3, a : Vector3, b : Vector3) -> Vector3 {
+		return .{
+			clamp(v.x, a.x, b.x),
+			clamp(v.y, a.y, b.y),
+			clamp(v.z, a.z, b.z)
+		};
 	}
-	{
-		speed := .0025;
-		delta := GetMouseDelta();
-		CameraYaw(camera, -delta.x * speed, false);
-		CameraPitch(camera, -delta.y * speed, true, false, false);
-	}
+
+	clamped_position := clamp(camera.position, bounds.min, bounds.max);
+	camera.target += clamped_position - camera.position;
+	camera.position = clamped_position;
 }
 
 reset_camera :: (using game_data : *Game_Data) {
-	camera = Camera.{Vector3.{8, 6, 0} * (cast(float)rules.diam / 16), .{0, 0, 0}, .{0, 1, 0}, 45, 0};
+	camera = Camera.{Vector3.{8, 6, 0} * (cast(float)board.diam / 16), .{0, 0, 0}, .{0, 1, 0}, 45, 0};
 }
 
 process_input :: (using game_data : *Game_Data) {
 	find_intersection(game_data);
+
 	if state ==  {
 		case .MOVE;
-		if IsKeyPressed(.TAB) || IsMouseButtonPressed(.LEFT) {
+		if IsMouseButtonPressed(.LEFT) || IsMouseButtonPressed(.RIGHT) {
 			state = .FIXED;
 			center := GetWindowPosition() + Vector2.{600, 400};
 			SetMousePosition(xx center.x, xx center.y);
 			EnableCursor();
 		}
 		case .FIXED;
-		if IsKeyPressed(.TAB) {
-			state = .MOVE;
-			DisableCursor();			
-		} else if IsMouseButtonPressed(.LEFT) {
+		if IsMouseButtonPressed(.LEFT) {
 			click(*board_interface);
+		} else if IsMouseButtonPressed(.RIGHT) {
+			if board_interface.selected != .{-1, -1} then {
+				board_interface.cursor = board_interface.selected;
+				click(*board_interface);
+			} else {
+				state = .MOVE;
+				DisableCursor();
+			}
 		}
+
 	}
 	if IsKeyPressed(.R) {
 		reset_camera(game_data);
@@ -124,7 +149,7 @@ process_input :: (using game_data : *Game_Data) {
 
 find_intersection :: (using game_data : *Game_Data) {
 	ray := GetMouseRay(GetMousePosition(), camera);
-	S := Vector3.{xx board.diam * .5, .3, xx board.diam * .5};
+	S := Vector3.{xx board.diam * CELL_SIZE, CELL_HEIGHT, xx board.diam * CELL_SIZE};
 	c0 := GetRayCollisionBox(ray, .{-.5 * S, .5 * S});
 
 	for y : 0..board.diam-1 {
@@ -132,10 +157,8 @@ find_intersection :: (using game_data : *Game_Data) {
 			cell := at(*board, .{xx x, xx y});
 			pos := to_vec3(*board, x, y);
 			if cell & .FIGURE {
-				height := .3;
-				radius := .2;
-
-				c1 := GetRayCollisionCylinder(ray, pos, pos + Vector3.{0, height, 0}, radius);
+				level := cell_level(cell);
+				c1 := GetRayCollisionCylinder(ray, pos, pos + Vector3.{0, CELL_HEIGHT / 2 + FIGURE_HEIGHT * (1 + level), 0}, FIGURE_RADIUS);
 				if c1.hit && c1.distance < c0.distance {
 					c0 = c1;
 				}
@@ -146,7 +169,7 @@ find_intersection :: (using game_data : *Game_Data) {
 	ipos : ivec2;
 	if c0.hit {
 		pos := c0.point + .5 * S;
-		ipos = .{xx (pos.x * 2), xx (pos.z * 2)};
+		ipos = .{xx (pos.x / CELL_SIZE), xx (pos.z / CELL_SIZE)};
 		Clamp(*ipos.x, 0, board.diam - 1);
 		Clamp(*ipos.y, 0, board.diam - 1);
 	} else {
@@ -160,38 +183,88 @@ find_intersection :: (using game_data : *Game_Data) {
 }
 
 to_vec3 :: (using board : *Board, x : int, y : int) -> Vector3 {
-	return (Vector3.{xx x, 0, xx y} - Vector3.{xx(diam - 1), 0, xx(diam - 1)} * .5) * .5;
-};
+	return (Vector3.{xx x, 0, xx y} - Vector3.{xx(diam - 1), 0, xx(diam - 1)} * .5) * CELL_SIZE;
+}
+
+mix :: (c1 : Color, c2 : Color, x : float) -> Color {
+	mix :: (a : u8, b : u8, x : float) -> u8 {
+		return cast(u8)(a * (1 - x) + b * x);
+	}
+	return .{
+		mix(c1.r, c2.r, x),
+		mix(c1.g, c2.g, x),
+		mix(c1.b, c2.b, x),
+		mix(c1.a, c2.a, x)
+	};
+}
+
 draw_scene :: (using game_data : Game_Data) {
 	BeginDrawing(); defer EndDrawing();
 	// ClearBackground(GRAY);
 	ClearBackground(.{xx background.x, xx background.y, xx background.z, 255});
 
+	draw_figure :: (cell : Cell, pos : Vector3, rules : Rules) {
+		y_offset := 0.;
+		draw_layer :: (pos: Vector3, color : Color) #expand {
+			DrawCylinder(pos + Vector3.{0, CELL_HEIGHT / 2 + y_offset, 0}, FIGURE_RADIUS, FIGURE_RADIUS, FIGURE_HEIGHT, CYLINDER_QUALITY, color);
+			`y_offset += FIGURE_HEIGHT;
+		}
+		if rules.leveled_upgrade {
+			if cell & .KING_BLACK then draw_layer(pos, BLACK);
+			if cell & .KING_BLUE then draw_layer(pos, BLUE);
+			if cell & .KING_RED then draw_layer(pos, RED);
+			if cell & .KING_GREEN then draw_layer(pos, GREEN);			
+		}
+		DrawCylinder(
+			pos + Vector3.{0, CELL_HEIGHT / 2 + y_offset, 0},
+			FIGURE_INNER_CIRCLE_RADIUS, FIGURE_INNER_CIRCLE_RADIUS, FIGURE_HEIGHT + .01, CYLINDER_QUALITY, 
+			ifx !rules.leveled_upgrade && (cell & .KING_ANY) then .{255, 255, 100, 255} else WHITE
+		);		
+
+		type := cell & .FIGURE_TYPE;
+		color_top : Color;
+		if type == {
+			case .BLACK; color_top = BLACK;
+			case .BLUE; color_top = BLUE;
+			case .RED; color_top = RED;
+			case .GREEN; color_top = GREEN;
+			case; assert(false);
+		}
+		draw_layer(pos, color_top);
+	}
+
+	cell_color :: (p : ivec2, using rules : Rules) -> Color {
+		factor :: .1;
+		if (p.x + p.y) % 2 return WHITE;
+		#if COLOR_ZONES {
+			if p.y < cutoff return mix(RAYWHITE, GREEN, factor);
+			if p.y >= diam - cutoff return mix(RAYWHITE, BLUE, factor);
+			if p.x < cutoff return mix(RAYWHITE, RED, factor);
+			// if p.x >= diam - cutoff return mix(RAYWHITE, BLACK, factor);			
+		}
+		return RAYWHITE;
+	}
 	BeginMode3D(camera);
-		// DrawGrid(10, 1.0);
-		using,except(rules) board;
+		using board;
 		i := 0;
+
+		#if SHINING_BORDERS {
+			upgrade_zone_mix_factor := (sin(GetTime() * 3) + 1) * .03;
+		} else {
+			upgrade_zone_mix_factor := 0.;
+		}
+
 		for y : 0..diam-1 {
 			for x : 0..diam-1 {
 				defer i += 1;
 				cell := at(*board, .{xx x, xx y});
 				pos := to_vec3(*board, x, y);
 				if !(cell & .BORDER) {
-					DrawCube(pos, .5, .3, .5, ifx (y + x) % 2 then WHITE else RAYWHITE);
+					base_color := cell_color(.{xx x, xx y}, rules);
+					factor := ifx cell & .BOOSTS then upgrade_zone_mix_factor else 0;
+					DrawCube(pos, CELL_SIZE, CELL_HEIGHT, CELL_SIZE, mix(base_color, MAGENTA, xx factor));
 				}
-				if cell & .FIGURE {
-					type := cell & .FIGURE_TYPE;
-					color : Color;
-					if type == {
-						case .BLACK; color = BLACK;
-						case .BLUE; color = BLUE;
-						case .RED; color = RED;
-						case .GREEN; color = GREEN;
-						case; assert(false);
-					}
-					DrawCylinder(pos + Vector3.{0, .15, 0}, .2, .2, .1, 12, color);
-					DrawCylinder(pos + Vector3.{0, .15, 0}, .15, .15, .11, 12, ifx cell & .KING_ANY then .{255, 255, 100, 255} else WHITE);
-				}
+				if cell & .FIGURE then draw_figure(cell, pos, rules);
 			}
 		}
 		if state == .FIXED {
@@ -205,13 +278,12 @@ draw_scene :: (using game_data : Game_Data) {
 					DrawCube(p1, .05, .05, .05, SKYBLUE);
 					DrawLine3D(p1, p2, BLUE);					
 				}
-
-				DrawCube(to_vec3(*board, cursor.x, cursor.y), .6, .4, .6, .{0, 255, 0, 30});
+				DrawCube(to_vec3(*board, cursor.x, cursor.y), CELL_SIZE + SELECTION_GAP * 2, CELL_HEIGHT + SELECTION_GAP * 2, CELL_SIZE + SELECTION_GAP * 2, .{0, 255, 0, 30});
 			}
 		}
 		selected := board_interface.selected;
 		if selected != .{-1, -1} then {
-			DrawCube(to_vec3(*board, selected.x, selected.y), .55, .35, .55, .{255, 0, 255, 30});
+			DrawCube(to_vec3(*board, selected.x, selected.y), CELL_SIZE + SELECTION_GAP, CELL_HEIGHT + SELECTION_GAP, CELL_SIZE + SELECTION_GAP, .{255, 0, 255, 30});
 		} 
 	EndMode3D();
 	#if DEBUG DrawFPS(20, 20);
