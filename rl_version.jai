@@ -8,11 +8,16 @@ using RL;
 #import "Hash";
 
 Game_Data :: struct {
-	board := Board.{
-		// rules = RULES_RUSSIAN
-		// rules = RULES_CLASSIC
-		rules = RULES_DEBUG
-	};
+	#if DEBUG {
+		board := Board.{
+			// rules = RULES_RUSSIAN
+			rules = RULES_DEBUG
+		};
+	} else {
+		board := Board.{
+			rules = RULES_CLASSIC
+		};
+	}
 	board_interface : Board_Interface;
 
 	cursor_collision : RayCollision;
@@ -22,11 +27,10 @@ Game_Data :: struct {
 		MOVE;
 	} = .FIXED;
 
-	currently_plying_step := Step.{type = .NONE};
-	animation_time := 0.;
-
 	camera : Camera;
 	background := BACKGROUND_COLORS[0];
+	delta_time, time := 0.;
+	animation_time := 0.;
 }
 
 using visual_properties : struct {
@@ -56,7 +60,6 @@ init_game :: (using game_data : *Game_Data) {
 deinit_game :: (using game_data : *Game_Data) {
 	deinit(*board);
 }
-
 main :: () {
 	defer report_memory_leaks();
 
@@ -75,13 +78,13 @@ main :: () {
 	}
 
 	while !WindowShouldClose() {
+		delta_time, time = xx min(GetFrameTime(), 1), xx GetTime();
 		process_input(*game_data);
 		simulate(*game_data);
-		draw_scene(game_data);
+		draw_scene(*game_data);
 		reset_temporary_storage();
 	}
 }
-
 simulate :: (using game_data : *Game_Data) {
 	if state == .MOVE {
 		R1 := CELL_SIZE * board.diam * 1.3;
@@ -93,20 +96,8 @@ simulate :: (using game_data : *Game_Data) {
 		};
 		move_camera(*camera, camera_bounds, 1.);
 	}
-	dt := min(GetFrameTime(), 1);
-	background = background * (1 - dt) + BACKGROUND_COLORS[board.current_player] * dt;
-
-	// animation here
-	// while 1 {
-	// 	step := get_step_to_animate(*board);
-	// 	if #complete step == {
-	// 		case .MOVE
-
-	// 		case
-	// 	}
-	// }
+	background = background * (1 - delta_time) + BACKGROUND_COLORS[board.current_player] * delta_time;
 }
-
 move_camera :: (camera : *Camera, bounds : BoundingBox, speed_factor : float) {
 	update_camera_free_move(camera, speed_factor);
 
@@ -122,14 +113,11 @@ move_camera :: (camera : *Camera, bounds : BoundingBox, speed_factor : float) {
 	camera.target += clamped_position - camera.position;
 	camera.position = clamped_position;
 }
-
 reset_camera :: (using game_data : *Game_Data) {
 	camera = Camera.{Vector3.{8, 6, 0} * (cast(float)board.diam / 16), .{0, 0, 0}, .{0, 1, 0}, 45, 0};
 }
-
 process_input :: (using game_data : *Game_Data) {
 	find_intersection(game_data);
-
 	if state ==  {
 		case .MOVE;
 		if IsMouseButtonPressed(.LEFT) || IsMouseButtonPressed(.RIGHT) {
@@ -140,8 +128,15 @@ process_input :: (using game_data : *Game_Data) {
 		}
 		case .FIXED;
 		if IsMouseButtonPressed(.LEFT) {
-			nodes := click(*board_interface);
-			log("nodes = %\n", nodes);
+			if board_interface.cursor != .{-1, -1} {
+				nodes := click(*board_interface);
+				#if DEBUG {
+					log("nodes = %\n", nodes);
+				}
+				for 1..nodes {
+					undo_single(*board);
+				}				
+			}
 		} else if IsMouseButtonPressed(.RIGHT) {
 			state = .MOVE;
 			DisableCursor();
@@ -151,7 +146,6 @@ process_input :: (using game_data : *Game_Data) {
 		reset_camera(game_data);
 	}
 }
-
 find_intersection :: (using game_data : *Game_Data) {
 	ray := GetMouseRay(GetMousePosition(), camera);
 	S := Vector3.{xx board.diam * CELL_SIZE, CELL_HEIGHT, xx board.diam * CELL_SIZE};
@@ -159,8 +153,9 @@ find_intersection :: (using game_data : *Game_Data) {
 
 	for y : 0..board.diam-1 {
 		for x : 0..board.diam-1 {
-			cell := at(*board, .{xx x, xx y});
-			pos := to_vec3(*board, x, y);
+			cell_coord := ivec2.{xx x, xx y};
+			cell := at(*board, cell_coord);
+			pos := to_vec3(*board, cell_coord);
 			if cell & .FIGURE {
 				level := cell_level(cell);
 				c1 := GetRayCollisionCylinder(ray, pos, pos + Vector3.{0, CELL_HEIGHT / 2 + FIGURE_HEIGHT * (1 + level), 0}, FIGURE_RADIUS);
@@ -186,11 +181,9 @@ find_intersection :: (using game_data : *Game_Data) {
 	cursor_collision = c0;
 	board_interface.cursor = ipos;
 }
-
-to_vec3 :: (using board : *Board, x : int, y : int) -> Vector3 {
-	return (Vector3.{xx x, 0, xx y} - Vector3.{xx(diam - 1), 0, xx(diam - 1)} * .5) * CELL_SIZE;
+to_vec3 :: (using board : Board, cell_coord : ivec2) -> Vector3 {
+	return (Vector3.{xx cell_coord.x, 0, xx cell_coord.y} - Vector3.{xx(diam - 1), 0, xx(diam - 1)} * .5) * CELL_SIZE;
 }
-
 mix :: (c1 : Color, c2 : Color, x : float) -> Color {
 	mix :: (a : u8, b : u8, x : float) -> u8 {
 		return cast(u8)(a * (1 - x) + b * x);
@@ -202,12 +195,7 @@ mix :: (c1 : Color, c2 : Color, x : float) -> Color {
 		mix(c1.a, c2.a, x)
 	};
 }
-
-draw_scene :: (using game_data : Game_Data) {
-	BeginDrawing(); defer EndDrawing();
-	// ClearBackground(GRAY);
-	ClearBackground(.{xx background.x, xx background.y, xx background.z, 255});
-
+draw_scene :: (using game_data : *Game_Data) {
 	draw_figure :: (cell : Cell, pos : Vector3, rules : Rules) {
 		y_offset := 0.;
 		draw_layer :: (pos: Vector3, color : Color) #expand {
@@ -224,8 +212,7 @@ draw_scene :: (using game_data : Game_Data) {
 			pos + Vector3.{0, CELL_HEIGHT / 2 + y_offset, 0},
 			FIGURE_INNER_CIRCLE_RADIUS, FIGURE_INNER_CIRCLE_RADIUS, FIGURE_HEIGHT + .01, CYLINDER_QUALITY, 
 			ifx !rules.leveled_upgrade && (cell & .KING_ANY) then .{255, 255, 100, 255} else WHITE
-		);		
-
+		);
 		type := cell & .FIGURE_TYPE;
 		color_top : Color;
 		if type == {
@@ -237,61 +224,136 @@ draw_scene :: (using game_data : Game_Data) {
 		}
 		draw_layer(pos, color_top);
 	}
-
-	get_cell_color :: (p : ivec2, using rules : Rules) -> Color {
+	get_cell_color :: (p : ivec2, cell : Cell, time : float, using rules : Rules) -> Color {
 		factor :: .1;
-		if (p.x + p.y) % 2 return WHITE;
-		#if COLOR_ZONES {
-			if p.y < cutoff return mix(RAYWHITE, GREEN, factor);
-			if p.y >= diam - cutoff return mix(RAYWHITE, BLUE, factor);
-			if p.x < cutoff return mix(RAYWHITE, RED, factor);
-			// if p.x >= diam - cutoff return mix(RAYWHITE, BLACK, factor);			
-		}
-		return RAYWHITE;
-	}
-	BeginMode3D(camera);
-		using board;
-		i := 0;
-		#if SHINING_BORDERS {
-			time := GetTime();
-		}
-
-		for y : 0..diam-1 {
-			for x : 0..diam-1 {
-				defer i += 1;
-				cell := at(*board, .{xx x, xx y});
-				pos := to_vec3(*board, x, y);
-				if !(cell & .BORDER) {
-					cell_color := get_cell_color(.{xx x, xx y}, rules);
-					#if SHINING_BORDERS if cell & .BOOSTS {
-						h1 := cast(float)knuth_hash((cast(u64)y) ^ knuth_hash(cast(u64) x)) / U64_MAX;
-						h2 := cast(float)knuth_hash((cast(u64)x) ^ knuth_hash(cast(u64) y)) / U64_MAX;
-						factor := (sin(time * (2 + h1 * 2) + h2 * 10) + 1) * .03;
-						cell_color = mix(cell_color, MAGENTA, xx factor);
-					}
-					DrawCube(pos, CELL_SIZE, CELL_HEIGHT, CELL_SIZE, cell_color);
-				}
-				if cell & .FIGURE then draw_figure(cell, pos, rules);
+		cell_color := RAYWHITE;
+		if (p.x + p.y) % 2 {
+			cell_color = WHITE;
+		} else #if COLOR_ZONES {
+			if p.y < cutoff {
+				cell_color = mix(RAYWHITE, GREEN, factor);
+			} else if p.y >= diam - cutoff {
+				cell_color = mix(RAYWHITE, BLUE, factor);
+			} else if p.x < cutoff {
+				cell_color = mix(RAYWHITE, RED, factor);
 			}
+			// else if p.x >= diam - cutoff {
+			// 	cell_color = mix(RAYWHITE, BLACK, factor);
+			// }
 		}
+		#if SHINING_BORDERS if cell & .BOOSTS {
+			h1 := cast(float)knuth_hash((cast(u64)p.y) ^ knuth_hash(cast(u64)p.x)) / U64_MAX;
+			h2 := cast(float)knuth_hash((cast(u64)p.x) ^ knuth_hash(cast(u64)p.y)) / U64_MAX;
+			factor := (sin(time * (2 + h1 * 2) + h2 * 10) + 1) * .03;
+			cell_color = mix(cell_color, MAGENTA, xx factor);
+		}
+		return cell_color;
+	}
+	draw_cursor_selection_and_collision :: (using game_data : Game_Data) {
 		if state == .FIXED {
 			cursor := board_interface.cursor;
 			if cursor != .{-1, -1} then {
 				assert(cursor_collision.hit);
-
 				#if DEBUG {
 					p1 := cursor_collision.point;
 					p2 := p1 + .2 * cursor_collision.normal;
 					DrawCube(p1, .05, .05, .05, SKYBLUE);
 					DrawLine3D(p1, p2, BLUE);					
 				}
-				DrawCube(to_vec3(*board, cursor.x, cursor.y), CELL_SIZE + SELECTION_GAP * 2, CELL_HEIGHT + SELECTION_GAP * 2, CELL_SIZE + SELECTION_GAP * 2, .{0, 255, 0, 30});
+				DrawCube(to_vec3(*board, cursor), CELL_SIZE + SELECTION_GAP * 2, CELL_HEIGHT + SELECTION_GAP * 2, CELL_SIZE + SELECTION_GAP * 2, .{0, 255, 0, 30});
 			}
 		}
 		selected := board_interface.selected;
 		if selected != .{-1, -1} then {
-			DrawCube(to_vec3(*board, selected.x, selected.y), CELL_SIZE + SELECTION_GAP, CELL_HEIGHT + SELECTION_GAP, CELL_SIZE + SELECTION_GAP, .{255, 0, 255, 30});
-		} 
+			DrawCube(to_vec3(*board, selected), CELL_SIZE + SELECTION_GAP, CELL_HEIGHT + SELECTION_GAP, CELL_SIZE + SELECTION_GAP, .{255, 0, 255, 30});
+		}
+	}
+	update_animation_time :: (using game_data : *Game_Data, speed : float) -> continue_animation:bool {
+		animation_time += delta_time * speed;
+		if animation_time > 1 {
+			redo_single(*board);
+			animation_time = 0;
+			return false;			
+		} else {
+			return true;
+		}
+	}
+	draw_mooving_figure :: (cell : Cell, from : ivec2, to : ivec2, t : float, using board : Board) {
+		p1, p2 := to_vec3(*board, from), to_vec3(board, to);
+		pos := lerp(p1, p2, t);
+		draw_figure(at(*board, from), pos, rules);
+	}
+	draw_animation :: () -> bool #expand {
+		main_draw_cycle_blacklist = .[.{-1, -1}, .{-1 ,-1}];
+		step = get_step_to_animate(board);
+		if step.type == {
+			case .MOVE; using step.data_move;
+			if update_animation_time(game_data, 8) {
+				main_draw_cycle_blacklist[0] = from;
+				t := pow(animation_time, .5);
+				draw_mooving_figure(at(*board, from), from, to, t, board);
+			} else {
+				return true;
+			}
+			case .CAPTURE; using step.data_capture;
+			if update_animation_time(game_data, 8) {
+				main_draw_cycle_blacklist[0] = from;
+				main_draw_cycle_blacklist[1] = to - dir;
+				t := pow(animation_time, .5);				
+				draw_mooving_figure(at(*board, from), from, to, t, board);
+				delta := to - from;
+				L := abs(delta.x) + abs(delta.y);
+				if t < 1. - 1. / L {
+					draw_figure(at(board, to - dir), to_vec3(board, to - dir), rules);
+				}
+			} else {
+				return true;
+			}
+			case .NONE;
+			case;
+			redo_single(*board);
+			return true;
+		}
+		return false;
+	}
+
+	BeginDrawing(); defer EndDrawing();
+	ClearBackground(.{xx background.x, xx background.y, xx background.z, 255});
+	BeginMode3D(camera);
+		using board;
+		main_draw_cycle_blacklist : [2]ivec2;
+		step : Step;
+		while draw_animation() { }
+		i := 0;
+		for y : 0..diam-1 {
+			for x : 0..diam-1 {
+				defer i += 1;
+				cell_coord := ivec2.{xx x, xx y};
+				cell := at(*board, cell_coord);
+				pos := to_vec3(*board, cell_coord);
+				if !(cell & .BORDER) {
+					cell_color := get_cell_color(cell_coord, cell, time, rules);
+					DrawCube(pos, CELL_SIZE, CELL_HEIGHT, CELL_SIZE, cell_color);
+				}
+				if (cell & .FIGURE) {
+					if !my_array_find(main_draw_cycle_blacklist, cell_coord) {
+						draw_figure(cell, pos, rules);
+					}
+				}
+			}
+		}
+		draw_cursor_selection_and_collision(game_data);
 	EndMode3D();
-	#if DEBUG DrawFPS(20, 20);
+	#if DEBUG {
+		DrawFPS(20, 20);
+		DrawText(temp_c_string(tprint(
+				"step = %\ntime = %\nuncommited = %\ncursor = %\n",
+				step,
+				animation_time,
+				board.uncommited_count,
+				board_interface.cursor
+			)),
+			20, 40, 30, RED
+		);
+	}
 }

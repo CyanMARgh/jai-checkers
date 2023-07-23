@@ -1,7 +1,8 @@
 #import "Basic";
 #import "Compiler";
+#import "Process";
 
-DEBUG :: true;
+DEBUG :: false;
 
 #run {
 	set_build_options_dc(.{do_output=false});
@@ -23,7 +24,6 @@ build :: (outfit : enum u8 {KSCURSES; SIMP; RAYLIB;}) {
 		return;
 	}
 	target_options := get_build_options(w);
-
 	outfit_suffix : string;
 	ifx #complete outfit == {
 		case .KSCURSES; outfit_suffix = "ks";
@@ -31,6 +31,11 @@ build :: (outfit : enum u8 {KSCURSES; SIMP; RAYLIB;}) {
 		case .SIMP; outfit_suffix = "simp";
 	}
 	
+	executable_name := sprint("checkers_%1%2.%3", 
+		outfit_suffix,
+		ifx DEBUG then "_debug" else "",
+		EXECUTABLE_SUFFIX
+	); defer free(executable_name);
 	{
 		using target_options;
 		text_output_flags = 0;
@@ -47,11 +52,7 @@ build :: (outfit : enum u8 {KSCURSES; SIMP; RAYLIB;}) {
 			backtrace_on_crash = .OFF;
 		}
 
-		output_executable_name = sprint("checkers_%1%2.%3", 
-			outfit_suffix,
-			ifx DEBUG then "_debug" else "",
-			EXECUTABLE_SUFFIX
-		);
+		output_executable_name = executable_name;
 	}
 	set_build_options(target_options, w);
 	compiler_begin_intercept(w);
@@ -67,4 +68,8 @@ build :: (outfit : enum u8 {KSCURSES; SIMP; RAYLIB;}) {
 		}
 	}
 	compiler_end_intercept(w);
+
+	#if OS == .LINUX {
+		run_command("ln", "-sf", executable_name, "main.elf");
+	}
 }

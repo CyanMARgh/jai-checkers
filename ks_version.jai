@@ -5,10 +5,12 @@ handle_key_board_interface :: (using board_interface : *Board_Interface, key : K
 		case .ENTER;
 		if !is_final(board) click(board_interface);
 
-		case #char"i";
-		cell := at(board, cursor);
-		length, capture_dirs, dirs := get_properties(cell, rules);
-		log("%: cell:%, length:%, capture dirs:%, move dirs:%\n", cursor, cell, length, capture_dirs, dirs);
+		#if DEBUG {
+			case #char"i";
+			cell := at(board, cursor);
+			length, capture_dirs, dirs := get_properties(cell, rules);
+			log("%: cell:%, length:%, capture dirs:%, move dirs:%\n", cursor, cell, length, capture_dirs, dirs);			
+		}
 	}
 	dir := arrow_code_to_ivec2(key);
 	cursor += dir;
@@ -105,7 +107,7 @@ init_game :: () {
 	init(*board);
 }
 deinit_game :: () {
-	log("%\n", board.history);
+	#if DEBUG log("%\n", board.history);
 	deinit(*board);
 	deinit(*main_canvas);
 }

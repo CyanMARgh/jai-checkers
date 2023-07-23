@@ -90,7 +90,7 @@ at_ptr :: (using board : *Board, pos : ivec2) -> *Cell {
 	assert(pos.x >= 0 && pos.x < diam && pos.y >= 0 && pos.y < diam);
 	return *(cells[pos.x + diam * pos.y]);
 }
-at :: (using board : *Board, pos : ivec2) -> Cell {
+at :: (using board : Board, pos : ivec2) -> Cell {
 	if pos.x < 0 || pos.x >= diam || pos.y < 0 || pos.y >= diam then return .BORDER;
 	return cells[pos.x + diam * pos.y];
 }
@@ -351,9 +351,11 @@ redo_single :: (using board : *Board) {
 	uncommited_count -= 1;
 	apply(board, step);
 }
-// undo_full :: (board : *Board) {
-// 	//===
-// }
+get_step_to_animate :: (using board : Board) -> Step {
+	assert(uncommited_count <= history.count && uncommited_count >= 0);
+	if uncommited_count == 0 return .{type = .NONE};
+	return history[history.count - uncommited_count];
+}
 
 move :: (using board : *Board, from : ivec2, to : ivec2) -> nodes:int {
 	nodes := 1;
