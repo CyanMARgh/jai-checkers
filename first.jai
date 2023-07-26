@@ -58,7 +58,7 @@ build :: (outfit : enum u8 {KSCURSES; SIMP; RAYLIB;}) {
 	compiler_begin_intercept(w);
 	add_build_file(tprint("%1/%2_version.jai", #filepath, outfit_suffix), w);
 	#if OS == .WINDOWS add_build_string("#run (#import \"Windows_Resources\").disable_runtime_console();", w);
-	add_build_string(sprint("DEBUG :: %;\n", DEBUG), w);
+	add_build_string(tprint("DEBUG :: %;\n", DEBUG), w);
 
 	while 1 {
 		message := compiler_wait_for_message();
@@ -70,6 +70,6 @@ build :: (outfit : enum u8 {KSCURSES; SIMP; RAYLIB;}) {
 	compiler_end_intercept(w);
 
 	#if OS == .LINUX {
-		run_command("ln", "-sf", executable_name, "main.elf");
+		run_command("ln", "-s", "-f", executable_name, "main.elf");
 	}
 }

@@ -17,8 +17,8 @@ Rules :: struct {
 	backward_capture := true;
 	length_by_level := s32.[1, 2, 4, 8];
 	// upgrade_in_process := true;
-	// enable_border := false;
-	// border_period := 20;
+	enable_border := false;
+	border_period := 20;
 }
 RULES_RUSSIAN :: Rules.{must_capture = true};
 RULES_CLASSIC :: Rules.{diagonal = false, leveled_upgrade = true, rows_offset = 1, rows = 2};
@@ -52,7 +52,7 @@ Cell :: enum_flags u16 {
 }
 
 Step :: struct {
-	type : enum u8 { NONE; INVALID; MOVE; CAPTURE; STEPEND; UPGRADE; };
+	type : enum u8 { NONE; INVALID; MOVE; CAPTURE; BORDER; ADDBOOST; STEPEND; UPGRADE; };
 	union {
 		data_move : struct {
 			from, to : ivec2;
@@ -61,6 +61,10 @@ Step :: struct {
 			from, to, dir : ivec2;
 			killed : Cell;
 		};
+		data_border : struct {
+			pos : ivec2;
+			bef : Cell;
+		}
 		data_upgrade : struct {
 			pos : ivec2;
 			bef, aft : Cell;
@@ -68,6 +72,10 @@ Step :: struct {
 		data_stepend : struct {
 			player_old, player_new : int;
 		};
+		data_addboost : struct {
+			pos : ivec2;
+			bef, aft : Cell;			
+		}
 	}
 }
 // 1) MOVE [, UPGRADE] STEPEND
@@ -82,10 +90,11 @@ Board :: struct {
 	history : [..]Step;
 	uncommited_count := 0;
 
+	step_id := 0;
+
 	active_figure := ivec2.{-1, -1};
 	last_capture_dir := ivec2.{0, 0};
 }
-
 at_ptr :: (using board : *Board, pos : ivec2) -> *Cell {
 	assert(pos.x >= 0 && pos.x < diam && pos.y >= 0 && pos.y < diam);
 	return *(cells[pos.x + diam * pos.y]);
@@ -220,28 +229,39 @@ get_player_by_code :: (cell : Cell) -> int {
 	return 5;
 }
 upgrade :: (c : Cell) -> Cell {
-	return c | (((c & .BOOSTS) >> 4) & ~((c & .FIGURE_TYPE) << 4));
+	c2 := c | (((c & .BOOSTS) >> 4) & ~((c & .FIGURE_TYPE) << 4));
+	// if c2 != c log("c = %, c2 = %\n", c, c2);
+	return c2;
 }
-
-gen_step_move :: (using board : *Board, from : ivec2, to : ivec2) -> Step {
+gen_step_move :: (using board : Board, from : ivec2, to : ivec2) -> Step {
 	return .{type = .MOVE, data_move = .{from = from, to = to}};
 }
-gen_step_capture :: (using board : *Board, from : ivec2, to : ivec2, dir : ivec2) -> Step {
+gen_step_capture :: (using board : Board, from : ivec2, to : ivec2, dir : ivec2) -> Step {
 	killed := at(board, to - dir) & .FIGURE;
 	return .{type = .CAPTURE, data_capture = .{from = from, to = to, dir = dir, killed = killed}};
 }
-gen_step_upgrade :: (using board : *Board, pos : ivec2) -> Step {
+gen_step_upgrade :: (using board : Board, pos : ivec2) -> Step {
 	c := at(board, pos);
 	c_aft := upgrade(c);
 	return .{type = ifx c == c_aft then .NONE else .UPGRADE, data_upgrade = .{pos = pos, bef = c, aft = c_aft}};
 }
-gen_step_end :: (using board : *Board) -> Step {
-	player_old, player_new := current_player;
-	while 1 {
-		player_new = (player_new + 1) % 4;
-		if alive_count[player_new] break;
+
+get_next_player :: (using board : Board) -> int {
+	for i : 1..4 {
+		p := (current_player + i) % 4;
+		if alive_count[p] > 0 {
+			can_kill, can_move := what_can_do(board, p, true);
+			if can_kill || can_move return p;
+		}
 	}
-	return .{type = .STEPEND, data_stepend = .{player_old = player_old, player_new = player_new}};
+	return 4;
+}
+
+gen_step_end :: (using board : Board) -> Step {
+	return .{type = .STEPEND, data_stepend = .{
+		player_old = current_player,
+		player_new = get_next_player(board)
+	}};
 }
 
 apply :: (using board : *Board, step : Step) {
@@ -253,24 +273,34 @@ apply :: (using board : *Board, step : Step) {
 
 		case .CAPTURE; using step.data_capture;
 		c1, c2, c3 := at_ptr(board, from), at_ptr(board, to), at_ptr(board, to - dir);
-		<<c2 |= <<c1 & .FIGURE;
-		<<c1 &= .BOARD_PROPS;
+		c2.* |= c1.* & .FIGURE;
+		c1.* &= .BOARD_PROPS;
 
-		killed_player := get_player_by_code(<<c3);
+		killed_player := get_player_by_code(c3.*);
 		assert(killed_player != 4);
 		alive_count[killed_player] -= 1;
 
-		<<c3 &= .BOARD_PROPS;
+		c3.* &= .BOARD_PROPS;
 		active_figure = to;
 		last_capture_dir = dir;
 
 		case .UPGRADE; using step.data_upgrade;
-		<<at_ptr(board, pos) = aft;
+		at_ptr(board, pos).* = aft;
 
 		case .STEPEND; using step.data_stepend;
 		active_figure = .{-1, -1};
 		last_capture_dir = .{};
 		current_player = player_new;
+		step_id += 1;
+
+		case .BORDER; using step.data_border;
+		p := get_player_by_code(bef);
+		if p != 4 then alive_count[p] -= 1;
+		at_ptr(board, pos).* = .BORDER;
+
+		case .ADDBOOST; using step.data_addboost;
+		at_ptr(board, pos).* = aft;
+		// log("addboost: pos = %, bef = %, aft = %\n", pos, bef, aft);
 
 		case .INVALID; assert(false);
 		case .NONE; assert(false);
@@ -283,7 +313,7 @@ apply_and_write :: (using board : *Board, step : Step) {
 	array_add(*(board.history), step);
 }
 
-get_last_step_view :: (using board : *Board) -> []Step {
+get_last_step_view :: (using board : Board) -> []Step {
 	tail_count := history.count;
 	if !tail_count return .[];
 	tail_count -= 1;
@@ -328,23 +358,32 @@ undo_single :: (using board : *Board) {
 		assert(killed_player != 4);
 		alive_count[killed_player] += 1;
 
-		<<c3 |= killed;
+		c3.* |= killed;
 		active_figure = .{-1, -1};
 		last_capture_dir = .{0, 0};
-		update_dir_and_active_figure(board);
 
 		case .UPGRADE; using step.data_upgrade;
-		<<at_ptr(board, pos) = bef;
+		at_ptr(board, pos).* = bef;
 
 		case .STEPEND; using step.data_stepend;
 		assert(active_figure == .{-1, -1});
 		assert(last_capture_dir == .{0, 0});
-		update_dir_and_active_figure(board);
 		current_player = player_old;
+		step_id -= 1;
+
+		case .BORDER; using step.data_border;
+		c := at_ptr(board, pos);
+		p := get_player_by_code(bef);
+		if p != 4 then alive_count[p] += 1;
+		c.* = bef;
+
+		case .ADDBOOST; using step.data_addboost;
+		at_ptr(board, pos).* = bef;
 
 		case .INVALID; assert(false);
 		case .NONE; assert(false);
-	}
+	} 
+	update_dir_and_active_figure(board);
 }
 redo_single :: (using board : *Board) {
 	step := history[history.count - uncommited_count];
@@ -379,11 +418,76 @@ capture :: (using board : *Board, from : ivec2, to : ivec2, dir : ivec2) -> node
 	}
 	return nodes;
 }
+Ring :: struct {diam : s32; offset : s32; double_corners : bool; }
+for_expansion :: (using ring : Ring, body : Code, flags : For_Flags) #expand {
+	`it, `forward : ivec2;
+	`it_index := 0; `color_flag : Cell;
+	L := diam - 2 * offset - 2 + cast(s32)double_corners;
+
+
+	`forward = .{-1, 0}; `color_flag = .BLACK;
+	for i : 0..L {
+		`it = .{diam - offset - 1, offset + i};
+		`it_index += 1; #insert body;
+	}
+	`forward = .{0, -1}; `color_flag = .BLUE;
+	for i : 0..L {
+		`it = .{diam - offset - 1 - i, diam - offset - 1};
+		`it_index += 1; #insert body;
+	}
+	`forward = .{1, 0}; `color_flag = .RED;
+	for i : 0..L {
+		`it = .{offset, diam - offset - 1 - i};
+		`it_index += 1; #insert body;
+	}
+	`forward = .{0, 1}; `color_flag = .GREEN;
+	for i : 0..L {
+		`it = .{offset + i, offset};
+		`it_index += 1; #insert body;
+	}
+}
+
+gen_apply_and_write_board_nodes :: (using board : *Board) -> nodes:int {
+	assert(enable_border);
+	nodes := 0;	
+	si := step_id + 1;
+
+	if si % border_period == 0 {
+		H := si / border_period - 1;
+		assert(H * 2 <= diam);
+		for Ring.{xx diam, xx H, false} {
+			cell := at(board, it);
+			if cell != .BORDER {
+				apply_and_write(board, .{type = .BORDER, data_border = .{pos = it, bef = cell}});
+				nodes += 1;
+			}
+		}
+		for Ring.{xx diam, xx (H + 1), true} {
+			cell := at(board, it);
+			if cell != .BORDER {
+				apply_and_write(board, .{type = .ADDBOOST, data_addboost = .{pos = it, bef = cell, aft = cell | (color_flag << 8)}});
+				nodes += 1;
+				if at(board, it) & .FIGURE {
+					step_upgrade := gen_step_upgrade(board, it);
+					if step_upgrade.type != .NONE {
+						apply_and_write(board, step_upgrade);
+						nodes += 1;
+					}					
+				}
+			}
+		}
+	}
+	return nodes;
+}
 
 end_step :: (using board : *Board) -> nodes:int {
-	step := gen_step_end(board);
-	apply_and_write(board, step);
-	return 1;
+	nodes := 1;
+	if enable_border {
+		nodes += gen_apply_and_write_board_nodes(board);
+	}
+	s := gen_step_end(board);
+	apply_and_write(board, s);
+	return nodes;
 }
 
 try_step :: (using board : *Board, from : ivec2, to : ivec2) -> enum u8 {NONE; MOVE; CAPTURE; ENDSEQ;}, nodes : int {
@@ -439,9 +543,9 @@ try_step :: (using board : *Board, from : ivec2, to : ivec2) -> enum u8 {NONE; M
 	return .NONE, nodes;
 }
 
-what_can_do :: (using board : *Board, pos : ivec2) -> can_capture:bool, can_move:bool {
+what_can_do :: (using board : Board, pos : ivec2, ignore_active_figure := false) -> can_capture:bool, can_move:bool {
 	cell := at(board, pos);
-	assert(active_figure == .{-1, -1} || active_figure == pos);
+	assert(ignore_active_figure || active_figure == .{-1, -1} || active_figure == pos, "pos = %, active_figure = %", pos, active_figure);
 	assert(!!(cell & .FIGURE_TYPE), "cell = %", cell);
 
 	length, capture_dirs, move_dirs := get_properties(cell, rules);
@@ -452,7 +556,7 @@ what_can_do :: (using board : *Board, pos : ivec2) -> can_capture:bool, can_move
 	can_move := false;
 
 	for dir : capture_dirs {
-		if dir == .{} || dir == -last_capture_dir continue;
+		if !ignore_active_figure && (dir == .{} || dir == -last_capture_dir) continue;
 		obstacle_dist := -1;
 		obstacle : Cell;
 		for i : 1..length {
@@ -477,7 +581,7 @@ what_can_do :: (using board : *Board, pos : ivec2) -> can_capture:bool, can_move
 
 	return can_capture, can_move;
 }
-what_can_do :: (using board : *Board, player : int) -> can_capture:bool, can_move:bool {
+what_can_do :: (using board : Board, player : int, ignore_active_figure := false) -> can_capture:bool, can_move:bool {
 	player_flag : Cell = xx(0x0001 << player);
 
 	can_capture, can_move : bool;
@@ -487,7 +591,7 @@ what_can_do :: (using board : *Board, player : int) -> can_capture:bool, can_mov
 			defer i += 1;
 			cell := cells[i];
 			if !(cell & player_flag) continue;
-			can_capture_f, can_move_f := what_can_do(board, .{xx x, xx y});
+			can_capture_f, can_move_f := what_can_do(board, .{xx x, xx y}, ignore_active_figure);
 			can_capture |= can_capture_f;
 			can_move |= can_move_f;
 
@@ -508,8 +612,8 @@ is_final :: (using board : *Board) -> bool, winner:int {
 			alive += 1;
 		}
 	}
-	assert(alive > 0);
-	return alive == 1, winner;
+	// assert(alive > 0);
+	return alive <= 1, winner;
 }
 
 Board_Interface :: struct {
