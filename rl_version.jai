@@ -2,7 +2,7 @@
 #import "Math";
 #import "Random";
 #import,dir "../rfoeraylib/Raylib";
-using RL;
+#import,dir "../miniaudio";
 
 #load "board.jai";
 #import "Hash";
@@ -18,9 +18,9 @@ Game_Data :: struct {
 				diagonal = false,
 				leveled_upgrade = true,
 				rows_offset = 1,
-				rows = 1,
-				diam = 8,
-				cutoff = 2,
+				rows = 2,
+				diam = 10,
+				cutoff = 3,
 				enable_border = true,
 				border_period = 4
 			}
@@ -47,6 +47,8 @@ Game_Data :: struct {
 	particle_system := Particle_System.{particles_count = 10000};
 	model_cell : Model;
 	model_cylinder : Model;
+
+	audio_engine : ma_engine;
 }
 
 using visual_properties : struct {
@@ -70,6 +72,11 @@ using visual_properties : struct {
 }
 
 init_game :: (using game_data : *Game_Data) {
+	if ma_engine_init(null, *audio_engine) != .SUCCESS {
+		log("can't init audio engine\n");
+		exit(-1);
+	}
+
 	reset_camera(game_data);
 	init(*board);
 	board_interface.board = *board;
@@ -82,7 +89,23 @@ deinit_game :: (using game_data : *Game_Data) {
 	UnloadModel(model_cylinder);
 	UnloadModel(model_cell);
 	deinit(*particle_system);
+
 	deinit(*board);
+
+	ma_engine_uninit(*audio_engine);
+}
+Sound_Type :: enum u8 {
+	SLIDE;
+}
+play_sound :: (type : Sound_Type, using game_data : *Game_Data) {
+	name : *u8 = "";
+	if type == {
+		case .SLIDE;
+		name = "res/piece_move_4.mp3";
+	}
+	if name {
+		ma_engine_play_sound(*audio_engine, name, null);
+	}
 }
 main :: () {
 	defer report_memory_leaks();
@@ -91,6 +114,7 @@ main :: () {
 	SetConfigFlags(.WINDOW_RESIZABLE);
 	SetConfigFlags(.MSAA_4X_HINT);
 	InitWindow(W0, H0, "c4eckers?"); defer CloseWindow();
+
 	gl_load(*gl);
 	SetTargetFPS(60);
 	{
@@ -311,18 +335,20 @@ draw_scene :: (using game_data : *Game_Data) {
 		step = get_step_to_animate(board);
 		if step.type == {
 			case .MOVE; using step.data_move;
-			if update_animation_time(game_data, 8) {
+			play_sound(.SLIDE, game_data);
+			if update_animation_time(game_data, 6) {
 				main_draw_cycle_blacklist[0] = from;
-				t := pow(animation_time, .5);
+				t := animation_time;//pow(animation_time, .5);
 				draw_mooving_figure(at(*board, from), from, to, t, game_data);
 			} else {
 				return true;
 			}
 			case .CAPTURE; using step.data_capture;
-			if update_animation_time(game_data, 8) {
+			play_sound(.SLIDE, game_data);
+			if update_animation_time(game_data, 6) {
 				main_draw_cycle_blacklist[0] = from;
 				main_draw_cycle_blacklist[1] = to - dir;
-				t := pow(animation_time, .5);				
+				t := animation_time;//pow(animation_time, .5);
 				draw_mooving_figure(at(*board, from), from, to, t, game_data);
 				delta := to - from;
 				L := abs(delta.x) + abs(delta.y);

@@ -643,7 +643,7 @@ click :: (using board_interface : *Board_Interface) -> nodes:int {
 			case .NONE;
 			if selected == cursor {
 				selected = .{-1, -1};
-			} else if is_clickable(board, cursor) {
+			} else if active_figure == .{-1, -1} && is_clickable(board, cursor) {
 				selected = cursor;
 			}
 
