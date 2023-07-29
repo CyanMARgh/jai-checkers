@@ -2,12 +2,31 @@
 #import "Math";
 #import "Random";
 #import,dir "../rfoeraylib/Raylib";
-#import,dir "../miniaudio";
+#import "Hash";
 
 #load "board.jai";
-#import "Hash";
+#load "stream_group.jai";
 #load "particle_system.jai";
 
+using visual_properties : struct {
+	BACKGROUND_COLORS :: Vector3.[
+		.{150, 150, 150},
+		.{200, 200, 255},
+		.{255, 200, 200},
+		.{200, 255, 200},
+		.{0, 0, 0}
+	];
+	FIGURE_RADIUS :: .2;
+	FIGURE_HEIGHT :: FIGURE_RADIUS * .5;
+	FIGURE_INNER_CIRCLE_RATIO :: .75;
+	CELL_SIZE :: .5;
+	CELL_HEIGHT :: .3;
+	SELECTION_GAP :: .05;
+	CYLINDER_QUALITY :: 20;
+
+	SHINING_BORDERS :: true;
+	COLOR_ZONES :: true;
+}
 Game_Data :: struct {
 	#if DEBUG {
 		board := Board.{
@@ -18,9 +37,9 @@ Game_Data :: struct {
 				diagonal = false,
 				leveled_upgrade = true,
 				rows_offset = 1,
-				rows = 2,
-				diam = 10,
-				cutoff = 3,
+				rows = 1,
+				diam = 8,
+				cutoff = 2,
 				enable_border = true,
 				border_period = 4
 			}
@@ -42,41 +61,22 @@ Game_Data :: struct {
 	camera : Camera;
 	background := BACKGROUND_COLORS[0];
 	delta_time, time := 0.;
-	animation_time := 0.;
 
 	particle_system := Particle_System.{particles_count = 10000};
 	model_cell : Model;
 	model_cylinder : Model;
 
-	audio_engine : ma_engine;
-}
-
-using visual_properties : struct {
-	BACKGROUND_COLORS :: Vector3.[
-		.{150, 150, 150},
-		.{200, 200, 255},
-		.{255, 200, 200},
-		.{200, 255, 200},
-		.{0, 0, 0}
-	];
-	FIGURE_RADIUS :: .2;
-	FIGURE_HEIGHT :: FIGURE_RADIUS * .5;
-	FIGURE_INNER_CIRCLE_RATIO :: .75;
-	CELL_SIZE :: .5;
-	CELL_HEIGHT :: .3;
-	SELECTION_GAP :: .05;
-	CYLINDER_QUALITY :: 20;
-
-	SHINING_BORDERS :: true;
-	COLOR_ZONES :: true;
-}
-
-init_game :: (using game_data : *Game_Data) {
-	if ma_engine_init(null, *audio_engine) != .SUCCESS {
-		log("can't init audio engine\n");
-		exit(-1);
+	using animation_data : struct {
+		animation_time := 0.;
+		current_step := Step.{type = .NONE};
+		banned_figure_coords : [2]ivec2;
+	};	
+	Sound_Type :: enum u8 {
+		SLIDE;
 	}
-
+	stream_group_slide : Stream_Group;
+}
+init_game :: (using game_data : *Game_Data) {
 	reset_camera(game_data);
 	init(*board);
 	board_interface.board = *board;
@@ -84,28 +84,16 @@ init_game :: (using game_data : *Game_Data) {
 	init(*particle_system);
 	model_cell = LoadModelFromMesh(GenMeshCube(CELL_SIZE, CELL_HEIGHT, CELL_SIZE));
 	model_cylinder = LoadModelFromMesh(GenMeshCylinder(FIGURE_RADIUS, FIGURE_HEIGHT, 16));
+
+	stream_group_slide = make_stream_group("res/piece_move_3.mp3");
 }
 deinit_game :: (using game_data : *Game_Data) {
+	deinit(*stream_group_slide);
+
 	UnloadModel(model_cylinder);
 	UnloadModel(model_cell);
 	deinit(*particle_system);
-
 	deinit(*board);
-
-	ma_engine_uninit(*audio_engine);
-}
-Sound_Type :: enum u8 {
-	SLIDE;
-}
-play_sound :: (type : Sound_Type, using game_data : *Game_Data) {
-	name : *u8 = "";
-	if type == {
-		case .SLIDE;
-		name = "res/piece_move_4.mp3";
-	}
-	if name {
-		ma_engine_play_sound(*audio_engine, name, null);
-	}
 }
 main :: () {
 	defer report_memory_leaks();
@@ -113,14 +101,10 @@ main :: () {
 	W0, H0 :: 1200, 800;
 	SetConfigFlags(.WINDOW_RESIZABLE);
 	SetConfigFlags(.MSAA_4X_HINT);
-	InitWindow(W0, H0, "c4eckers?"); defer CloseWindow();
-
+	InitWindow(W0, H0, "c4eckers!"); defer CloseWindow();
+	InitAudioDevice(); defer CloseAudioDevice();
 	gl_load(*gl);
 	SetTargetFPS(60);
-	{
-		center := GetWindowPosition() + Vector2.{W0 / 2, H0 / 2};
-		SetMousePosition(xx center.x, xx center.y);
-	}
 
 	using game_data : Game_Data;
 	init_game(*game_data); defer deinit_game(*game_data);
@@ -129,7 +113,9 @@ main :: () {
 		delta_time, time = xx min(GetFrameTime(), 1), xx GetTime();
 		process_input(*game_data);
 		simulate(*game_data);
-		draw_scene(*game_data);
+		process_unapplied_steps(*game_data);
+		update(*stream_group_slide);
+		draw_scene(game_data);
 		reset_temporary_storage();
 	}
 }
@@ -241,7 +227,65 @@ mix :: (c1 : Color, c2 : Color, x : float) -> Color {
 		mix(c1.a, c2.a, x)
 	};
 }
-draw_scene :: (using game_data : *Game_Data) {
+
+process_unapplied_steps :: (using game_data : *Game_Data) {
+	try_start_new_animation :: (using game_data : *Game_Data) {
+		current_step = get_step_to_animate(board);
+		animation_time = 0;
+
+		if current_step.type == {
+			case .UPGRADE; using current_step.data_upgrade;
+			point := to_vec3(board, pos) + .{0, CELL_HEIGHT / 2, 0};
+			diff := aft & ~bef;
+			if diff & .KING_RED emit(*particle_system, point, base_color = RED);
+			if diff & .KING_BLUE emit(*particle_system, point, base_color = BLUE);
+			if diff & .KING_BLACK emit(*particle_system, point, base_color = BLACK);
+			if diff & .KING_GREEN emit(*particle_system, point, base_color = GREEN);
+			case .MOVE;
+			play(*stream_group_slide);
+			case .CAPTURE;
+			play(*stream_group_slide);
+		}
+	}
+	update_animation :: (using game_data : *Game_Data) -> current_animation_ended:bool {
+		if current_step.type == {
+			case .NONE;
+			return false;
+			case .MOVE;
+			animation_time += 5 * delta_time;
+			case .CAPTURE;
+			animation_time += 5 * delta_time;
+			case .BORDER;
+			animation_time += 10 * delta_time;
+			case;
+			return true;
+		}
+		return animation_time >= 1;
+	}
+	set_blacklist :: (using game_data : *Game_Data) {
+		banned_figure_coords = .[.{-1, -1}, .{-1, -1}];
+		if current_step.type == {
+			case .MOVE; using current_step.data_move;
+			banned_figure_coords[0] = from;
+			case .CAPTURE; using current_step.data_capture;
+			banned_figure_coords[0] = from;
+			banned_figure_coords[1] = to - dir;
+		}
+	}
+
+	if current_step.type == .NONE {
+		try_start_new_animation(game_data);
+	}
+
+	while update_animation(game_data) {
+		redo_single(*board);
+		try_start_new_animation(game_data);
+	}
+
+	set_blacklist(game_data);
+}
+
+draw_scene :: (using game_data : Game_Data) {
 	draw_figure :: (cell : Cell, pos : Vector3, using game_data : Game_Data) {
 		y_offset := 0.;
 		draw_layer :: (pos: Vector3, color : Color, using game_data : Game_Data) #expand {
@@ -330,62 +374,26 @@ draw_scene :: (using game_data : *Game_Data) {
 		pos := lerp(p1, p2, t);
 		draw_figure(at(*board, from), pos, game_data);
 	}
-	draw_animation :: () -> bool #expand {
-		main_draw_cycle_blacklist = .[.{-1, -1}, .{-1 ,-1}];
-		step = get_step_to_animate(board);
-		if step.type == {
-			case .MOVE; using step.data_move;
-			play_sound(.SLIDE, game_data);
-			if update_animation_time(game_data, 6) {
-				main_draw_cycle_blacklist[0] = from;
-				t := animation_time;//pow(animation_time, .5);
-				draw_mooving_figure(at(*board, from), from, to, t, game_data);
-			} else {
-				return true;
+	draw_animation :: (using game_data : Game_Data) {
+		if current_step.type == {
+			case .MOVE; using current_step.data_move;
+			t := pow(animation_time, .5);
+			draw_mooving_figure(at(*board, from), from, to, t, game_data);
+			case .CAPTURE; using current_step.data_capture;
+			t := pow(animation_time, .5);
+			draw_mooving_figure(at(*board, from), from, to, t, game_data);
+			delta := to - from;
+			L := abs(delta.x) + abs(delta.y);
+			if t < 1. - 1. / L {
+				draw_figure(at(board, to - dir), to_vec3(board, to - dir), game_data);
 			}
-			case .CAPTURE; using step.data_capture;
-			play_sound(.SLIDE, game_data);
-			if update_animation_time(game_data, 6) {
-				main_draw_cycle_blacklist[0] = from;
-				main_draw_cycle_blacklist[1] = to - dir;
-				t := animation_time;//pow(animation_time, .5);
-				draw_mooving_figure(at(*board, from), from, to, t, game_data);
-				delta := to - from;
-				L := abs(delta.x) + abs(delta.y);
-				if t < 1. - 1. / L {
-					draw_figure(at(board, to - dir), to_vec3(board, to - dir), game_data);
-				}
-			} else {
-				return true;
-			}
-			case .BORDER; using step.data_border;
-			if !update_animation_time(game_data, 8) return true;
-			case .UPGRADE; using step.data_upgrade;
-			point := to_vec3(board, pos) + .{0, CELL_HEIGHT / 2, 0};
-			diff := aft & ~bef;
-			if diff & .KING_RED emit(*particle_system, point, base_color = RED);
-			if diff & .KING_BLUE emit(*particle_system, point, base_color = BLUE);
-			if diff & .KING_BLACK emit(*particle_system, point, base_color = BLACK);
-			if diff & .KING_GREEN emit(*particle_system, point, base_color = GREEN);
-
-			redo_single(*board);
-			case .NONE;
-			case;
-			redo_single(*board);
-			return true;
 		}
-		return false;
 	}
 
 	BeginDrawing(); defer EndDrawing();
 	ClearBackground(.{xx background.x, xx background.y, xx background.z, 255});
 	BeginMode3D(camera);
 		using board;
-		main_draw_cycle_blacklist : [2]ivec2;
-		step : Step;
-		while draw_animation() {
-			// log("(4)\n");
-		}
 		i := 0;
 		for y : 0..diam-1 {
 			for x : 0..diam-1 {
@@ -398,12 +406,13 @@ draw_scene :: (using game_data : *Game_Data) {
 					DrawModel(model_cell, pos, 1, cell_color);
 				}
 				if (cell & .FIGURE) {
-					if !my_array_find(main_draw_cycle_blacklist, cell_coord) {
+					if !my_array_find(banned_figure_coords, cell_coord) {
 						draw_figure(cell, pos, game_data);
 					}
 				}
 			}
 		}
+		draw_animation(game_data);
 		draw(*particle_system);
 		draw_cursor_selection_and_collision(game_data);
 	EndMode3D();
@@ -411,7 +420,7 @@ draw_scene :: (using game_data : *Game_Data) {
 		DrawFPS(20, 20);
 		DrawText(temp_c_string(tprint(
 				"step = %\ntime = %\nuncommited = %\ncursor = %\ncycle_id = %\nalive_count = %\nplayer = %\n",
-				step,
+				current_step,
 				animation_time,
 				board.uncommited_count,
 				board_interface.cursor,
