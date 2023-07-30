@@ -51,60 +51,81 @@ Game_Data :: struct {
 	}
 	board_interface : Board_Interface;
 
-	cursor_collision : RayCollision;
-
 	state : enum u8 {
 		FIXED;
 		MOVE;
 	} = .FIXED;
 
 	camera : Camera;
-	background := BACKGROUND_COLORS[0];
+	cursor_collision : RayCollision;
 	delta_time, time := 0.;
 
-	particle_system := Particle_System.{particles_count = 10000};
-	model_cell : Model;
-	model_cylinder : Model;
+	using visual_data : struct {
+		background := BACKGROUND_COLORS[0];
 
-	using animation_data : struct {
+		particle_system := Particle_System.{particles_count = 10000};
+		model_cell : Model;
+		model_cylinder : Model;
+
 		animation_time := 0.;
 		current_step := Step.{type = .NONE};
 		banned_figure_coords : [2]ivec2;
 	};	
+	using audio_data : Audio_Controller;
+}
+Audio_Controller :: struct {
 	Sound_Type :: enum u8 {
 		SLIDE;
+		CRACK;
+		UPGRADE;
 	}
 	stream_group_slide : Stream_Group;
-}
+	stream_group_crack : Stream_Group;
+	stream_group_upgrade : Stream_Group;
+};
+
 init_game :: (using game_data : *Game_Data) {
-	reset_camera(game_data);
-	init(*board);
-	board_interface.board = *board;
-
-	init(*particle_system);
-	model_cell = LoadModelFromMesh(GenMeshCube(CELL_SIZE, CELL_HEIGHT, CELL_SIZE));
-	model_cylinder = LoadModelFromMesh(GenMeshCylinder(FIGURE_RADIUS, FIGURE_HEIGHT, 16));
-
-	stream_group_slide = make_stream_group("res/piece_move_3.mp3");
+	// logic
+		init(*board);
+		board_interface.board = *board;
+		reset_camera(game_data);
+	// visual
+		W0, H0 :: 1200, 800;
+		SetConfigFlags(.WINDOW_RESIZABLE);
+		SetConfigFlags(.MSAA_4X_HINT);
+		InitWindow(W0, H0, "c4eckers!");
+		gl_load(*gl);
+		SetTargetFPS(60);
+	
+		model_cell = LoadModelFromMesh(GenMeshCube(CELL_SIZE, CELL_HEIGHT, CELL_SIZE));
+		model_cylinder = LoadModelFromMesh(GenMeshCylinder(FIGURE_RADIUS, FIGURE_HEIGHT, 16));
+	
+		init(*particle_system);
+	// audio
+		InitAudioDevice();
+		stream_group_slide = make_stream_group("res/slide2.mp3");
+		// stream_group_crack = make_stream_group("res/crack.wav");
+		// stream_group_upgrade = make_stream_group("res/upgrade.wav");
 }
 deinit_game :: (using game_data : *Game_Data) {
-	deinit(*stream_group_slide);
-
-	UnloadModel(model_cylinder);
-	UnloadModel(model_cell);
-	deinit(*particle_system);
-	deinit(*board);
+	// audio
+		// deinit(*stream_group_upgrade);
+		// deinit(*stream_group_crack);
+		deinit(*stream_group_slide);
+		CloseAudioDevice();
+	// visual_data
+		deinit(*particle_system);
+		
+		UnloadModel(model_cylinder);
+		UnloadModel(model_cell);
+		
+		CloseWindow();
+	// logic
+		deinit(*board);
 }
 main :: () {
 	defer report_memory_leaks();
-
-	W0, H0 :: 1200, 800;
-	SetConfigFlags(.WINDOW_RESIZABLE);
-	SetConfigFlags(.MSAA_4X_HINT);
-	InitWindow(W0, H0, "c4eckers!"); defer CloseWindow();
-	InitAudioDevice(); defer CloseAudioDevice();
-	gl_load(*gl);
-	SetTargetFPS(60);
+ 
 
 	using game_data : Game_Data;
 	init_game(*game_data); defer deinit_game(*game_data);
@@ -112,9 +133,12 @@ main :: () {
 	while !WindowShouldClose() {
 		delta_time, time = xx min(GetFrameTime(), 1), xx GetTime();
 		process_input(*game_data);
-		simulate(*game_data);
-		process_unapplied_steps(*game_data);
 		update(*stream_group_slide);
+		simulate(*game_data);
+
+		// update(*stream_group_crack);
+		// update(*stream_group_upgrade);
+
 		draw_scene(game_data);
 		reset_temporary_storage();
 	}
@@ -131,6 +155,7 @@ simulate :: (using game_data : *Game_Data) {
 		move_camera(*camera, camera_bounds, 1.);
 	}
 	background = background * (1 - delta_time) + BACKGROUND_COLORS[board.current_player] * delta_time;
+	process_unapplied_steps(game_data);
 	simulate(*particle_system, delta_time);
 }
 move_camera :: (camera : *Camera, bounds : BoundingBox, speed_factor : float) {
@@ -227,7 +252,6 @@ mix :: (c1 : Color, c2 : Color, x : float) -> Color {
 		mix(c1.a, c2.a, x)
 	};
 }
-
 process_unapplied_steps :: (using game_data : *Game_Data) {
 	try_start_new_animation :: (using game_data : *Game_Data) {
 		current_step = get_step_to_animate(board);
@@ -245,6 +269,7 @@ process_unapplied_steps :: (using game_data : *Game_Data) {
 			play(*stream_group_slide);
 			case .CAPTURE;
 			play(*stream_group_slide);
+			play(*stream_group_crack);
 		}
 	}
 	update_animation :: (using game_data : *Game_Data) -> current_animation_ended:bool {
@@ -284,7 +309,6 @@ process_unapplied_steps :: (using game_data : *Game_Data) {
 
 	set_blacklist(game_data);
 }
-
 draw_scene :: (using game_data : Game_Data) {
 	draw_figure :: (cell : Cell, pos : Vector3, using game_data : Game_Data) {
 		y_offset := 0.;

@@ -1,5 +1,5 @@
 Stream_Group :: struct {
-	streams : [10]Music;
+	streams : [3]Music;
 }
 make_stream_group :: (src : *u8) -> Stream_Group {
 	using result : Stream_Group;
@@ -10,26 +10,16 @@ make_stream_group :: (src : *u8) -> Stream_Group {
 	return result;
 }
 deinit :: (using stream_group : *Stream_Group) {
-	for streams {
-		UnloadMusicStream(it);
-	}
+	for streams UnloadMusicStream(it);
 }
 play :: (using stream_group : *Stream_Group) {
-	count := 0;
 	for streams {
 		if !IsMusicStreamPlaying(it) {
-			count += 1;
 			PlayMusicStream(it);
 			break;
 		}
 	}
 }
 update :: (using stream_group : *Stream_Group) {
-	count := 0;
-	for streams {
-		UpdateMusicStream(it);
-		if IsMusicStreamPlaying(it) {
-			count += 1;
-		}
-	}
+	for streams UpdateMusicStream(it);
 }
