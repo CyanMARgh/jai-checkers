@@ -4,6 +4,18 @@
 
 DEBUG :: true;
 
+// TODO:
+// - ui:
+//		- start menu
+//		- "escape" menu
+// - death pieces
+// - undo last step (full)
+// - long capture (rule)
+// - can continue capture after upgrade (rule), default = true
+// - must_capture : enum u8 { OFF; ON; ___QUEENS___; } = .OFF;
+// - save board
+// - board editor mode
+
 #run {
 	set_build_options_dc(.{do_output=false});
 	build(.RAYLIB);

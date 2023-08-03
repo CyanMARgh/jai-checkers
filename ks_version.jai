@@ -90,8 +90,6 @@ main :: () {
 }
 
 #scope_file
-
-
 board := Board.{
 	rules = .{diam = 12, cutoff = 2, rows = 2, must_capture = true}
 	// rules = .{diam = 16, cutoff = 4, rows = 2, rows_offset = 1, must_capture = false, diagonal = false}
@@ -108,7 +106,7 @@ init_game :: () {
 }
 deinit_game :: () {
 	#if DEBUG log("%\n", board.history);
-	deinit(*board);
+	deinit(*board_interface);
 	deinit(*main_canvas);
 }
 draw_game :: () {
