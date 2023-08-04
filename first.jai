@@ -21,14 +21,6 @@ DEBUG :: true;
 	build(.RAYLIB);
 }
 
-#if OS == .LINUX {
-	EXECUTABLE_SUFFIX :: "elf";
-} else #if OS == .WINDOWS {
-	EXECUTABLE_SUFFIX :: "exe";
-} else {
-	#run assert(false, "invalid OS");
-}
-
 build :: (outfit : enum u8 {KSCURSES; SIMP; RAYLIB;}) {
 	w := compiler_create_workspace();
 	if !w {
@@ -43,10 +35,9 @@ build :: (outfit : enum u8 {KSCURSES; SIMP; RAYLIB;}) {
 		case .SIMP; outfit_suffix = "simp";
 	}
 	
-	executable_name := sprint("checkers_%1%2.%3", 
+	executable_name := sprint("checkers_%1%2", 
 		outfit_suffix,
 		ifx DEBUG then "_debug" else "",
-		EXECUTABLE_SUFFIX
 	); defer free(executable_name);
 	{
 		using target_options;
