@@ -22,9 +22,9 @@ DEBUG :: true;
 }
 
 #if OS == .LINUX {
-	EXECUTABLE_SUFFIX :: "elf";
+	EXECUTABLE_SUFFIX :: ".elf";
 } else #if OS == .WINDOWS {
-	EXECUTABLE_SUFFIX :: "exe";
+	EXECUTABLE_SUFFIX :: "";
 } else {
 	#run assert(false, "invalid OS");
 }
@@ -43,7 +43,7 @@ build :: (outfit : enum u8 {KSCURSES; SIMP; RAYLIB;}) {
 		case .SIMP; outfit_suffix = "simp";
 	}
 	
-	executable_name := sprint("checkers_%1%2.%3", 
+	executable_name := sprint("checkers_%1%2%3", 
 		outfit_suffix,
 		ifx DEBUG then "_debug" else "",
 		EXECUTABLE_SUFFIX

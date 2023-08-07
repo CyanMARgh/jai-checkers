@@ -54,7 +54,6 @@ Cell :: enum_flags u16 {
 	BOARD_PROPS :: 0xFF00;
 	OBSTACLE	:: 0xF0FF;
 }
-
 Step :: struct {
 	type : enum u8 { NONE; INVALID; MOVE; CAPTURE; BORDER; ADDBOOST; STEPEND; UPGRADE; };
 	union {
@@ -640,7 +639,6 @@ is_final :: (using board : *Board) -> bool, winner:int {
 }
 Board_Interface :: struct {
 	using board : *Board;
-	player_me := 4;
 
 	selected := ivec2.{-1, -1};
 	cursor := ivec2.{0, 0};
@@ -693,8 +691,8 @@ can_continue_capture :: (using board : Board) -> bool {
 	}
 	return false;
 }
-click :: (using board_interface : *Board_Interface) -> nodes:int {
-	if player_me != 4 && player_me != current_player return 0;
+click :: (using board_interface : *Board_Interface, sender_id := 4) -> nodes:int {
+	if sender_id != 4 && sender_id != current_player return 0;
 	assert(uncommited_count >= 0);
 	if uncommited_count return 0;
 	assert(cursor.x >= 0 && cursor.y >= 0 && cursor.x < diam && cursor.y < diam);
@@ -706,9 +704,14 @@ click :: (using board_interface : *Board_Interface) -> nodes:int {
 		return true;
 	}
 	if selected == .{-1, -1} then {
-		assert(active_figure == .{-1 ,-1});
-		if is_clickable(board, cursor) {
-			selected = cursor;
+		if active_figure != .{-1, -1} then {
+			if active_figure == cursor {
+				selected = cursor;
+			}
+		} else {
+			if is_clickable(board, cursor) {
+				selected = cursor;
+			}
 		}
 		return 0;
 	} else {
@@ -813,48 +816,7 @@ deinit :: (using board_interface : *Board_Interface) {
 	array_free(shown_steps_capture);
 }
 
-cut_data :: ($T : Type, src : *[]u8) -> T, bool {
-	result : T = ---;
-	ok := cut_data_move(*result, src);
-	return result, ok;
-}
-cut_data_move :: (dst : *$T, src : *[]u8) -> bool {
-	S :: size_of(T);
-	if src.count < S then return false;
-	memcpy(dst, src.data, S);
-	src.data += S; src.count -= S;
-	return true;
-}
-write_data :: (dst : *[..]u8, src : $T) {
-	S :: size_of(T);
-	src_u8 : []u8 = ---;
-	src_u8.data, src_u8.count = xx *src, S;
-	array_add(dst, ..src_u8);
-}
-cut_array_move :: (dst : *[]$T, src : *[]u8) -> bool {
-	S :: size_of(T);
-	if !cut_data_move(*(dst.count), src) return false;
-	S2 := S * dst.count;
-	if src.count < S2 return false;
-	dst.data = alloc(S2);
-	memcpy(dst.data, src.data, S2);
-	src.data += S2; src.count -= S2;
-	return true;
-}
-cut_array_move :: (dst : *[..]$T, src : *[]u8) -> bool {
-	if !cut_array_move(cast(*[]T)dst, src) return false;
-	dst.allocated = dst.count;
-	return true;
-}
-
-write_array :: (dst : *[..]u8, src : []$T) {
-	S :: size_of(T);
-	src_u8 : []u8 = ---;
-	write_data(dst, src.count);
-	src_u8.data, src_u8.count = xx src.data, S * src.count;
-	array_add(dst, ..src_u8);
-}
-
+#load "serialization.jai";
 #import "File";
 save_board :: (using board : Board, path : string) -> bool {
 	bytes : [..]u8; bytes.allocator = temp;
@@ -873,7 +835,6 @@ load_board :: (using board : *Board, path : string) -> bool {
 	history.allocated = history.count;
 	return src_u8.count == 0;
 }
-
 copy :: (using src : Board) -> Board {
 	result := src;
 	result.cells = array_copy(cells);
@@ -882,27 +843,6 @@ copy :: (using src : Board) -> Board {
 	result.history = H;
 	return result;
 }
-
-to_byte_array_view :: (value : *$T) -> []u8 {
-	result : []u8 = ---;
-	result.data, result.count = xx value, size_of(T);
-	return result;
-}
-to_u8_array :: (arr : []$T) -> []u8 {
-	arr_u8 : []u8;
-	arr_u8.data, arr_u8.count = xx arr.data, arr.count * size_of(T);
-	return arr_u8;
-}
-is_same_array :: (arr1 : []$T, arr2 : []T) -> bool {
-	if arr1.count != arr2.count return false;
-	arr1_u8 := to_u8_array(arr1);
-	arr2_u8 := to_u8_array(arr2);
-	for i : 0..arr1.count-1 {
-		if arr1_u8[i] != arr2_u8[i] return false;
-	}
-	return true;
-}
-
 is_same :: (b1 : Board, b2 : Board) -> bool {
 	posa1 := to_byte_array_view(*b1.part_on_stack);
 	posa2 := to_byte_array_view(*b2.part_on_stack);
@@ -910,4 +850,31 @@ is_same :: (b1 : Board, b2 : Board) -> bool {
 	if !is_same_array(b1.cells, b2.cells) return false;
 	if !is_same_array(b1.history, b2.history) return false;
 	return true;
+}
+is_same_fields :: (o1 : $T, o2 : T) -> bool 
+#modify {
+	ti := cast(*Type_Info) T;
+	return ti.type == .STRUCT;
+} {
+	ptr1, ptr2 : *u8 = xx *o1, xx *o2;
+	tis := cast(*Type_Info_Struct)type_info(T);
+	for tis.members {
+		offset, size := it.offset_in_bytes, it.type.runtime_size;
+		if memcmp(ptr1 + offset, ptr2 + offset, size) return false;
+	}
+	return true;
+}
+is_same :: (s1 : Step, s2 : Step) -> bool {
+	if s1.type != s2.type return false;
+	if #complete s1.type == {
+		case .NONE; return true;
+		case .INVALID; return true;
+		case .MOVE; return is_same_fields(s1.data_move, s2.data_move);
+		case .CAPTURE; return is_same_fields(s1.data_capture, s2.data_capture);
+		case .BORDER; return is_same_fields(s1.data_border, s2.data_border);
+		case .UPGRADE; return is_same_fields(s1.data_upgrade, s2.data_upgrade);
+		case .STEPEND; return is_same_fields(s1.data_stepend, s2.data_stepend);
+		case .ADDBOOST; return is_same_fields(s1.data_addboost, s2.data_addboost);
+	}
+	return false;
 }
