@@ -1,9 +1,10 @@
 #import "Basic"()(MEMORY_DEBUGGER=true);
 #import "Math";
 #import "Random";
-#import,dir "../rfoeraylib/Raylib";
+#import,dir "../raylib-jai-universal/Raylib";
 #import "Hash";
 
+#load "networking.jai";
 #load "board.jai";
 // #load "stream_group.jai";
 #load "particle_system.jai";
@@ -100,6 +101,8 @@ Game_Data :: struct {
 		font : Font;
 	};	
 	// using audio_data : Audio_Controller;
+
+	using networking_data : Networking_Data;
 }
 // Audio_Controller :: struct {
 // 	Sound_Type :: enum u8 {
@@ -112,10 +115,22 @@ Game_Data :: struct {
 // 	stream_group_upgrade : Stream_Group;
 // };
 
+parse_command_line_arguments :: (using game_data: *Game_Data) {
+	args := get_command_line_arguments();
+	if args.count > 1 {
+		am_server = false;
+		client_data = .{ server_address = args[1] };
+	} else {
+		am_server = true;
+		server_data = .{};
+	}
+}
+
 init_game :: (using game_data : *Game_Data) {
 	// logic
 		init(*board);
 		board_interface.board = *board;
+		board_interface.player_me = ifx am_server then 0 else 4;
 		init_cameras(game_data);
 	// visual
 		W0, H0 :: 1200, 800;
@@ -163,6 +178,8 @@ main :: () {
  
 
 	using game_data : Game_Data;
+	parse_command_line_arguments(*game_data);
+	init_networking(*game_data);
 	init_game(*game_data); defer deinit_game(*game_data);
 
 	while !WindowShouldClose() {
@@ -173,6 +190,7 @@ main :: () {
 		// update(*stream_group_upgrade);
 		simulate(*game_data);
 		draw_scene(game_data);
+		do_networking(*game_data);
 		reset_temporary_storage();
 	}
 }
@@ -187,7 +205,9 @@ simulate :: (using game_data : *Game_Data) {
 		};
 		move_camera(*camera, camera_bounds, 1.);
 	}
-	background = background * (1 - delta_time) + BACKGROUND_COLORS[board.current_player] * delta_time;
+	background = background * (1 - delta_time) + BACKGROUND_COLORS[board.current_player] * delta_time
+		// * (ifx am_server then 1.0 else 0.3)
+		;
 	process_unapplied_steps(game_data);
 	simulate(*particle_system, delta_time);
 }
@@ -659,18 +679,37 @@ draw_scene :: (using game_data : Game_Data) {
 
 	#if DEBUG {
 		DrawFPS(20, 20);
-		DrawText(temp_c_string(tprint(
-				"step = %\ntime = %\nuncommited = %\ncursor = %\ncycle_id = %\nalive_count = %\nplayer = %\ncam_state = %\n",
-				current_step,
-				animation_time,
-				board.uncommited_count,
-				board_interface.cursor,
-				board_interface.step_id,
-				board_interface.alive_count,
-				board_interface.current_player,
-				cam_state
-			)),
-			20, 40, 20, RED
+		builder: String_Builder;
+		builder.allocator = temporary_allocator;
+		print_to_builder(*builder, #string END
+step = %
+time = %
+uncommited = %
+cursor = %
+cycle_id = %
+alive_count = %
+player = %
+cam_state = %
+player_me = %
+END,
+			current_step,
+			animation_time,
+			board.uncommited_count,
+			board_interface.cursor,
+			board_interface.step_id,
+			board_interface.alive_count,
+			board_interface.current_player,
+			cam_state,
+			board_interface.player_me,
 		);
+		if am_server {
+			for client_connections {
+				print_to_builder(*builder, "client %: %\n", it_index + 1, it.state);
+			}
+		} else {
+			print_to_builder(*builder, "server: %\n", server_connection.state);
+		}
+		append(*builder, "\0");
+		DrawText(builder_to_string(*builder).data, 20, 40, 20, RED);
 	}
 }

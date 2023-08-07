@@ -60,7 +60,10 @@ build :: (outfit : enum u8 {KSCURSES; SIMP; RAYLIB;}) {
 	set_build_options(target_options, w);
 	compiler_begin_intercept(w);
 	add_build_file(tprint("%1/%2_version.jai", #filepath, outfit_suffix), w);
-	#if OS == .WINDOWS add_build_string("#run (#import \"Windows_Resources\").disable_runtime_console();", w);
+
+	// This prevents log messages to be printed into the console.
+	// #if OS == .WINDOWS add_build_string("#run (#import \"Windows_Resources\").disable_runtime_console();", w);
+
 	add_build_string(tprint("DEBUG :: %;\n", DEBUG), w);
 
 	while 1 {
