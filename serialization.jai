@@ -49,11 +49,15 @@ to_u8_array :: (arr : []$T) -> []u8 {
 	return arr_u8;
 }
 is_same_array :: (arr1 : []$T, arr2 : []T) -> bool {
-	if arr1.count != arr2.count return false;
-	arr1_u8 := to_u8_array(arr1);
-	arr2_u8 := to_u8_array(arr2);
+	if arr1.count != arr2.count {
+		print("size missmatch: % / %\n", arr1.count, arr2.count);
+		return false;
+	}
 	for i : 0..arr1.count-1 {
-		if arr1_u8[i] != arr2_u8[i] return false;
+		if arr1[i] != arr2[i] {
+			print("different elements : % / %\n", arr1[i], arr2[i]);
+			return false;
+		}
 	}
 	return true;
 }

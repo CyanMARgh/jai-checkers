@@ -692,10 +692,13 @@ can_continue_capture :: (using board : Board) -> bool {
 	return false;
 }
 click :: (using board_interface : *Board_Interface, sender_id := 4) -> nodes:int {
+	print("(0)\n");
 	if sender_id != 4 && sender_id != current_player return 0;
+	print("(1)\n");
 	assert(uncommited_count >= 0);
 	if uncommited_count return 0;
 	assert(cursor.x >= 0 && cursor.y >= 0 && cursor.x < diam && cursor.y < diam);
+	print("(2)\n");
 	defer refresh_possible_moves(board_interface);
 	is_clickable :: (using board : *Board, pos : ivec2) -> bool {
 		if !is_owned_by(at(board, pos), current_player) return false;
@@ -703,6 +706,7 @@ click :: (using board_interface : *Board_Interface, sender_id := 4) -> nodes:int
 		if (should_current_player_capture(board) || !can_move) && !can_capture return false;
 		return true;
 	}
+	print("(3)\n");
 	if selected == .{-1, -1} then {
 		if active_figure != .{-1, -1} then {
 			if active_figure == cursor {
@@ -715,7 +719,9 @@ click :: (using board_interface : *Board_Interface, sender_id := 4) -> nodes:int
 		}
 		return 0;
 	} else {
+		print("(4)\n");
 		result, nodes := try_step(board, selected,	cursor);
+		print("(5)\n");
 		if #complete result == {
 			case .NONE;
 			if active_figure == .{-1, -1} {
@@ -742,6 +748,7 @@ click :: (using board_interface : *Board_Interface, sender_id := 4) -> nodes:int
 				selected = .{-1, -1};
 			}
 		}
+		print("(6)\n");
 		return nodes;
 	}
 }
@@ -843,7 +850,7 @@ copy :: (using src : Board) -> Board {
 	result.history = H;
 	return result;
 }
-is_same :: (b1 : Board, b2 : Board) -> bool {
+operator== :: (b1 : Board, b2 : Board) -> bool {
 	posa1 := to_byte_array_view(*b1.part_on_stack);
 	posa2 := to_byte_array_view(*b2.part_on_stack);
 	if !is_same_array(posa1, posa2) return false;
@@ -864,7 +871,7 @@ is_same_fields :: (o1 : $T, o2 : T) -> bool
 	}
 	return true;
 }
-is_same :: (s1 : Step, s2 : Step) -> bool {
+operator== :: (s1 : Step, s2 : Step) -> bool {
 	if s1.type != s2.type return false;
 	if #complete s1.type == {
 		case .NONE; return true;
@@ -877,4 +884,28 @@ is_same :: (s1 : Step, s2 : Step) -> bool {
 		case .ADDBOOST; return is_same_fields(s1.data_addboost, s2.data_addboost);
 	}
 	return false;
+}
+
+Board_Request :: struct {
+	sender_id : int; // 4 if moderator mode
+	click_pos : ivec2;
+	new_nodes : []Step;
+}
+click_with_verification :: (using board_interface : *Board_Interface, request : Board_Request) -> verified:bool, new_nodes_count:int {
+	assert(uncommited_count >= 0);
+	tmp := board_interface.cursor;
+
+	board_interface.cursor = request.click_pos;
+	new_nodes_count := click(board_interface, request.sender_id);
+	print("new_nodes_count(real) : %\n", new_nodes_count);
+	new_nodes_real := array_view(history, history.count - new_nodes_count);
+	if is_same_array(new_nodes_real, request.new_nodes) {
+		return true, new_nodes_count;
+	} else {
+		for 1..new_nodes_count undo_single(board);
+		history.count -= uncommited_count;
+		uncommited_count = 0;
+		board_interface.cursor = tmp;
+		return false, 0;
+	}
 }

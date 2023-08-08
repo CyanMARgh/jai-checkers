@@ -37,32 +37,32 @@ Game_Scene :: struct {
 		board := Board.{
 			// rules = RULES_RUSSIAN
 			// rules = RULES_DEBUG
-			rules = .{
-				must_capture = true,
-				diagonal = false,
-				leveled_upgrade = true,
-				rows_offset = 1,
-				rows = 2,
-				diam = 10,
-				cutoff = 3,
-				enable_border = true,
-				border_period = 8,
-				must_continue_capture = true
-			}
 			// rules = .{
 			// 	must_capture = true,
 			// 	diagonal = false,
-			// 	leveled_upgrade = false,
+			// 	leveled_upgrade = true,
 			// 	rows_offset = 1,
 			// 	rows = 2,
-			// 	diam = 8,
-			// 	cutoff = 0,
+			// 	diam = 10,
+			// 	cutoff = 3,
 			// 	enable_border = true,
-			// 	border_period = 100,
-			// 	must_continue_capture = true,
-			// 	two_players = true,
-			// 	// _180_no_scope = true
+			// 	border_period = 8,
+			// 	must_continue_capture = true
 			// }
+			rules = .{
+				must_capture = true,
+				diagonal = false,
+				leveled_upgrade = false,
+				rows_offset = 1,
+				rows = 2,
+				diam = 8,
+				cutoff = 0,
+				enable_border = true,
+				border_period = 100,
+				must_continue_capture = true,
+				two_players = true,
+				// _180_no_scope = true
+			}
 		};
 	} else {
 		board := Board.{
@@ -95,15 +95,37 @@ Game_Scene :: struct {
 	// using audio_data : Audio_Controller;
 }
 
-// Board_Request :: struct {
-// 	sender_id : int; // 4 if moderator mode
-// 	click_pos : ivec2;
-// 	nodes : []Step;
-// }
-
-// click_with_verification :: (board_interface : *Board_Interface, request : Board_Request) -> verified:bool {
-
-// }
+requests_queue : Queue(Board_Request);
+add_some_request :: () {
+	push(*requests_queue, .{
+			sender_id = 2,
+			click_pos = .{2, 6},
+			new_nodes = .[]
+		}
+	);
+	push(*requests_queue, .{
+			sender_id = 2,
+			click_pos = .{3, 6},
+			new_nodes = array_copy(Step.[
+				.{type = .MOVE, data_move = .{from = .{2, 6}, to = .{3, 6}}},
+				.{type = .STEPEND, data_stepend = .{player_old = 2, player_new = 0}}
+			])
+		}
+	);
+}
+process_request :: (using game_scene : *Game_Scene, request : Board_Request) {
+	assert(board.uncommited_count == 0);
+	verified, new_nodes_count := click_with_verification(*board_interface, request);
+	print("got request: %\n", request);
+	if verified {
+		print("animation started!\n");
+		for 1..new_nodes_count {
+			undo_single(*board);
+		}
+	} else {
+		print("invalid request!\n");
+	}
+}
 
 init_main_scene :: (using game_scene : *Game_Scene) {
 	init(*board);
@@ -119,10 +141,18 @@ main :: () {
 
 	using game_scene : Game_Scene;
 	init_main_scene(*game_scene); defer deinit_main_scene(*game_scene);
+	defer deinit(*requests_queue);
 
 	while !WindowShouldClose() {
 		delta_time, time = xx min(GetFrameTime(), 1), xx GetTime();
 		process_input(*game_scene);
+		if board.uncommited_count == 0 {
+			request, ok := pop(*requests_queue);
+			if ok {
+				process_request(*game_scene, request);
+				array_free(request.new_nodes);
+			}
+		}
 		// update(*stream_group_slide);
 		// update(*stream_group_crack);
 		// update(*stream_group_upgrade);
@@ -190,9 +220,12 @@ process_input :: (using game_scene : *Game_Scene) {
 		}
 		case .FIXED;
 		if IsMouseButtonPressed(.LEFT) {
-			if board_interface.cursor != .{-1, -1} {
-				nodes := click(*board_interface);
-				for 1..nodes {
+			if board_interface.cursor != .{-1, -1} && board.uncommited_count == 0 {
+				new_nodes_count := click(*board_interface);
+				new_nodes := array_view(board.history, board.history.count - new_nodes_count);
+				print("new nodes:\n");
+				for new_nodes print("%\n", it);
+				for 1..new_nodes_count {
 					undo_single(*board);
 				}
 			}
@@ -210,7 +243,9 @@ process_input :: (using game_scene : *Game_Scene) {
 		deinit(*board);
 		ok = load_board(*board, "b1.board");
 		assert(ok);
-		assert(is_same(tmp, board));
+		assert(tmp == board);
+	} else if IsKeyPressed(.N) {
+		add_some_request();
 	}
 }
 find_intersection :: (using game_scene : *Game_Scene) {
