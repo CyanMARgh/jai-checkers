@@ -1,7 +1,7 @@
 #import "Basic"()(MEMORY_DEBUGGER=true);
 #import "Math";
 #import "Random";
-#import,dir "../rfoeraylib/Raylib";
+#import "rfoeraylib/Raylib";
 #import "Hash";
 
 #load "board.jai";
@@ -224,8 +224,8 @@ process_input :: (using game_scene : *Game_Scene) {
 			if board_interface.cursor != .{-1, -1} && board.uncommited_count == 0 {
 				new_nodes_count := click(*board_interface);
 				new_nodes := array_view(board.history, board.history.count - new_nodes_count);
-				print("new nodes:\n");
-				for new_nodes print("%\n", it);
+				// log("new nodes:\n");
+				// for new_nodes log("%\n", it);
 				for 1..new_nodes_count {
 					undo_single(*board);
 				}
