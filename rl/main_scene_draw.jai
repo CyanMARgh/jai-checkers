@@ -87,8 +87,9 @@ draw_scene :: (using game_scene : Game_Scene) {
 			draw_mooving_figure(at(*board, from), from, to, t, game_scene);
 			delta := to - from;
 			L := abs(delta.x) + abs(delta.y);
-			if t < 1. - 1. / L {
-				draw_figure(at(board, to - dir), to_vec3(board, to - dir), game_scene);
+			if t < 1. - cast(float)over / L {
+				killed_pos := to - dir * over;
+				draw_figure(at(board, killed_pos), to_vec3(board, killed_pos), game_scene);
 			}
 			case .BORDER; using current_step.data_border;
 			pos_3 := to_vec3(*board, pos);

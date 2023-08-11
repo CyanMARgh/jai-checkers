@@ -1,8 +1,9 @@
+DEBUG :: true;
+IMPORT_EXTRA_PATH :: "/home/cyanmargh/projects/jai/";
+
 #import "Basic";
 #import "Compiler";
 #import "Process";
-
-DEBUG :: true;
 
 // TODO:
 // - ui:
@@ -10,7 +11,6 @@ DEBUG :: true;
 //		- "escape" menu
 // - death pieces
 // - undo last step (full)
-// - long capture (rule)
 // - can continue capture after upgrade (rule), default = true
 // - must_capture : enum u8 { OFF; ON; ___QUEENS___; } = .OFF;
 // - save board
@@ -63,6 +63,7 @@ build :: (outfit : enum u8 {KSCURSES; SIMP; RAYLIB;}) {
 			dead_code_elimination = .ALL;
 			backtrace_on_crash = .OFF;
 		}
+		import_path = .[import_path[0], IMPORT_EXTRA_PATH];
 
 		output_executable_name = executable_name;
 	}

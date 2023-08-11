@@ -61,6 +61,7 @@ Game_Scene :: struct {
 				border_period = 100,
 				must_continue_capture = true,
 				two_players = true,
+				land_right_behind = false,
 				// _180_no_scope = true
 			}
 		};
@@ -116,14 +117,14 @@ add_some_request :: () {
 process_request :: (using game_scene : *Game_Scene, request : Board_Request) {
 	assert(board.uncommited_count == 0);
 	verified, new_nodes_count := click_with_verification(*board_interface, request);
-	print("got request: %\n", request);
+	log("got request: %\n", request);
 	if verified {
-		print("animation started!\n");
+		log("animation started!\n");
 		for 1..new_nodes_count {
 			undo_single(*board);
 		}
 	} else {
-		print("invalid request!\n");
+		log("invalid request!\n");
 	}
 }
 
@@ -430,7 +431,7 @@ process_unapplied_steps :: (using game_scene : *Game_Scene) {
 			banned_figure_coords[0] = from;
 			case .CAPTURE; using current_step.data_capture;
 			banned_figure_coords[0] = from;
-			banned_figure_coords[1] = to - dir;
+			banned_figure_coords[1] = to - dir * over;
 			case .BORDER; using current_step.data_border;
 			banned_figure_coords[0] = pos;
 			banned_cell_coords[0] = pos;

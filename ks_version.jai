@@ -1,3 +1,4 @@
+using,except(Color) KS :: #import "kscurses";
 #load "board.jai";
 
 handle_key_board_interface :: (using board_interface : *Board_Interface, key : Key) {
@@ -5,12 +6,11 @@ handle_key_board_interface :: (using board_interface : *Board_Interface, key : K
 		case .ENTER;
 		if !is_final(board) click(board_interface);
 
-		#if DEBUG {
-			case #char"i";
-			cell := at(board, cursor);
-			length, capture_dirs, dirs := get_properties(cell, rules);
-			log("%: cell:%, length:%, capture dirs:%, move dirs:%\n", cursor, cell, length, capture_dirs, dirs);			
-		}
+			case #char"i"; #if DEBUG {
+				cell := at(board, cursor);
+				length, capture_dirs, dirs := get_properties(cell, rules);
+				log("%: cell:%, length:%, capture dirs:%, move dirs:%\n", cursor, cell, length, capture_dirs, dirs);			
+			}
 	}
 	dir := arrow_code_to_ivec2(key);
 	cursor += dir;

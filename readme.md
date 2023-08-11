@@ -14,20 +14,20 @@ There are 3 game interfaces available: Simp (2D for now), kscurses (TUI) and ray
 ...
 ```
 # extra requirements
+For building any of the versions, the Extra_Containers module is used: https://github.com/CyanMARgh/extra-containers.
+Place it in your modules folder and specify the path to it in first.jai.
+
 ## SIMP
-nothing needed.
+nothing extra.
 
 ## Raylib
 You must have the bindings module installed:
 https://github.com/CyanMARgh/raylib-jai-linux
-The path to it is specified in rl_version.jai.
 
-Now it is being built for windows and linux, but since there are plans to add a GUI with raygui (which currently only has linux support), for the time being the version will only be available for linux.
 
 ## kscurses
 You must have the module installed:
 https://github.com/CyanMARgh/kscurses
-The path to it is specified in ks_version.jai.
 
 because at the moment kscurses does not have windows support, this version is built only for linux.
 

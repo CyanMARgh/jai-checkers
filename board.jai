@@ -1,6 +1,5 @@
 #import "Basic";
-// #poke_name Basic operator==;
-using,except(Color) KS :: #import,dir "../kscurses";
+#import "Extra_Containers";
 #import "Math";
 
 my_array_find :: (array: [] $T, item: T) -> bool, s64 {
@@ -22,6 +21,7 @@ Rules :: struct {
 	enable_border			:= false;
 	two_players 			:= false;
 	must_continue_capture	:= false;
+	land_right_behind		:= true;
 }
 
 RULES_RUSSIAN :: Rules.{must_capture = true};
@@ -63,6 +63,7 @@ Step :: struct {
 		data_capture : struct {
 			from, to, dir : ivec2;
 			killed : Cell;
+			over :s32= 1;
 		};
 		data_border : struct {
 			pos : ivec2;
@@ -285,9 +286,10 @@ upgrade :: (c : Cell) -> Cell {
 gen_step_move :: (using board : Board, from : ivec2, to : ivec2) -> Step {
 	return .{type = .MOVE, data_move = .{from = from, to = to}};
 }
-gen_step_capture :: (using board : Board, from : ivec2, to : ivec2, dir : ivec2) -> Step {
-	killed := at(board, to - dir) & .FIGURE;
-	return .{type = .CAPTURE, data_capture = .{from = from, to = to, dir = dir, killed = killed}};
+gen_step_capture :: (using board : Board, from : ivec2, to : ivec2, dir : ivec2, over : s32) -> Step {
+	killed := at(board, to - dir * over) & .FIGURE;
+	// log("gen_step_capture: from = %, to = %, over = %, dir = %, killed = %\n", from, to, over, dir, killed);
+	return .{type = .CAPTURE, data_capture = .{from = from, to = to, dir = dir, killed = killed, over = over}};
 }
 gen_step_upgrade :: (using board : Board, pos : ivec2) -> Step {
 	c := at(board, pos);
@@ -317,13 +319,15 @@ apply :: (using board : *Board, step : Step) {
 		c1.* &= .BOARD_PROPS;
 
 		case .CAPTURE; using step.data_capture;
-		c1, c2, c3 := at_ptr(board, from), at_ptr(board, to), at_ptr(board, to - dir);
+
+		c1, c2, c3 := at_ptr(board, from), at_ptr(board, to), at_ptr(board, to - dir * over);
 		c2.* |= c1.* & .FIGURE;
 		c1.* &= .BOARD_PROPS;
 
 		killed_player := get_player_by_code(c3.*);
 		assert(killed_player != 4);
 		alive_count[killed_player] -= 1;
+		// log("apply: from = %, to = %, over = %, dir = %, killed = %; c3 = %\n", from, to, over, dir, killed, c3.*);
 
 		c3.* &= .BOARD_PROPS;
 		active_figure = to;
@@ -393,12 +397,12 @@ undo_single :: (using board : *Board) {
 		c2.* &= .BOARD_PROPS;
 
 		case .CAPTURE; using step.data_capture;
-		c1, c2, c3 := at_ptr(board, from), at_ptr(board, to), at_ptr(board, to - dir);
+		c1, c2, c3 := at_ptr(board, from), at_ptr(board, to), at_ptr(board, to - dir * over);
 		c1.* |= c2.* & .FIGURE;
 		c2.* &= .BOARD_PROPS;
 
 		killed_player := get_player_by_code(killed);
-		assert(killed_player != 4);
+		assert(killed_player != 4, "from = %, to = %, over = %, dir = %, killed = %\n", from, to, over, dir, killed);
 		alive_count[killed_player] += 1;
 
 		c3.* |= killed;
@@ -450,9 +454,9 @@ move :: (using board : *Board, from : ivec2, to : ivec2) -> nodes:int {
 	}
 	return nodes;
 }
-capture :: (using board : *Board, from : ivec2, to : ivec2, dir : ivec2) -> nodes:int {
+capture :: (using board : *Board, from : ivec2, to : ivec2, dir : ivec2, over : s32) -> nodes:int {
 	nodes := 1;
-	step := gen_step_capture(board, from, to, dir);
+	step := gen_step_capture(board, from, to, dir, over);
 	apply_and_write(board, step);
 	step2 := gen_step_upgrade(board, to);
 	if step2.type == .UPGRADE {
@@ -576,17 +580,24 @@ try_step :: (using board : *Board, from : ivec2, to : ivec2) -> enum u8 {NONE; M
 		for i : 1..length if is_obstacle(at(board, from + dir * i)) return false;
 		return true;
 	}
-	ready_for_capture :: (board : *Board, from : ivec2, length : s32, max_length : s32, dir : ivec2, capture_dirs : [4]ivec2) -> bool {
-		if length <= 1 || length > max_length + 1 || !my_array_find(capture_dirs, dir) then return false;
+	ready_for_capture :: (board : *Board, from : ivec2, length : s32, max_length : s32, dir : ivec2, capture_dirs : [4]ivec2) -> ready:bool, over:s32 {
+		if length <= 1 || length > max_length + 1 || !my_array_find(capture_dirs, dir) then return false, -1;
+		over :s32= -1;
+		enemies_count := 0;
+		cell_from := at(board, from);
+
 		for i : 1..length {
-			pos := from + dir * i;
-			if i == length-1 {
-				if !is_enemies(at(board, pos), at(board, from)) return false;
-			} else {
-				if is_obstacle(at(board, pos)) return false;
+			cell := at(board, from + dir * i);
+			if is_obstacle(cell) {
+				if is_enemies(cell, cell_from) {
+					enemies_count += 1;
+					over = length - i;
+				} else {
+					return false, -1;
+				}
 			}
 		}
-		return true;
+		return over == 1 || (!board.land_right_behind && over > 1), over;
 	}
 
 	nodes := 0;
@@ -599,25 +610,35 @@ try_step :: (using board : *Board, from : ivec2, to : ivec2) -> enum u8 {NONE; M
 
 	if active_figure != .{-1, -1} then {
 		if from != active_figure then return .NONE, nodes;
+		// end sequence
 		if (length == 0) && (!must_continue_capture || !can_continue_capture(board)) {
 			nodes += end_step(board);
 			return .ENDSEQ, nodes;
 		}
-		if dir != .{} && (_180_no_scope || dir != -last_capture_dir) && ready_for_capture(board, from, length, max_length, dir, capture_dirs) {
-			nodes += capture(board, from, to, dir);
-			return .CAPTURE, nodes;
+		// continue sequence
+		if dir != .{} && (_180_no_scope || dir != -last_capture_dir) {
+			ready, over := ready_for_capture(board, from, length, max_length, dir, capture_dirs);
+			if ready {
+				nodes += capture(board, from, to, dir, over);
+				return .CAPTURE, nodes;				
+			}
 		}
-	} else {
-		if dir == .{} return .NONE, nodes;
-		if !should_current_player_capture(board) && ready_for_move(board, from, length, max_length, dir, move_dirs) {
-			nodes += move(board, from, to);
-			nodes += end_step(board);
-			return .MOVE, nodes;
-		}
-		if ready_for_capture(board, from, length, max_length, dir, capture_dirs) {
-			nodes += capture(board, from, to, dir);
-			return .CAPTURE, nodes;
-		}
+		return .NONE, nodes;
+	}
+
+	// move
+	// if dir == .{} return .NONE, nodes;
+	if !should_current_player_capture(board) && ready_for_move(board, from, length, max_length, dir, move_dirs) {
+		nodes += move(board, from, to);
+		nodes += end_step(board);
+		return .MOVE, nodes;
+	}
+	// start sequence
+	ready, over := ready_for_capture(board, from, length, max_length, dir, capture_dirs);
+	if ready {
+		// log("over = %\n", over);
+		nodes += capture(board, from, to, dir, over);
+		return .CAPTURE, nodes;
 	}
 	return .NONE, nodes;
 }
@@ -692,13 +713,13 @@ can_continue_capture :: (using board : Board) -> bool {
 	return false;
 }
 click :: (using board_interface : *Board_Interface, sender_id := 4) -> nodes:int {
-	print("(0)\n");
+	// log("(0)\n");
 	if sender_id != 4 && sender_id != current_player return 0;
-	print("(1)\n");
+	// log("(1)\n");
 	assert(uncommited_count >= 0);
 	if uncommited_count return 0;
 	assert(cursor.x >= 0 && cursor.y >= 0 && cursor.x < diam && cursor.y < diam);
-	print("(2)\n");
+	// log("(2)\n");
 	defer refresh_possible_moves(board_interface);
 	is_clickable :: (using board : *Board, pos : ivec2) -> bool {
 		if !is_owned_by(at(board, pos), current_player) return false;
@@ -706,7 +727,7 @@ click :: (using board_interface : *Board_Interface, sender_id := 4) -> nodes:int
 		if (should_current_player_capture(board) || !can_move) && !can_capture return false;
 		return true;
 	}
-	print("(3)\n");
+	// log("(3)\n");
 	if selected == .{-1, -1} then {
 		if active_figure != .{-1, -1} then {
 			if active_figure == cursor {
@@ -719,9 +740,9 @@ click :: (using board_interface : *Board_Interface, sender_id := 4) -> nodes:int
 		}
 		return 0;
 	} else {
-		print("(4)\n");
+		// log("(4)\n");
 		result, nodes := try_step(board, selected,	cursor);
-		print("(5)\n");
+		// log("(5)\n");
 		if #complete result == {
 			case .NONE;
 			if active_figure == .{-1, -1} {
@@ -748,7 +769,7 @@ click :: (using board_interface : *Board_Interface, sender_id := 4) -> nodes:int
 				selected = .{-1, -1};
 			}
 		}
-		print("(6)\n");
+		// log("(6)\n");
 		return nodes;
 	}
 }
@@ -775,16 +796,25 @@ get_possible_steps :: (using board : Board, pos : ivec2, should_capture : bool, 
 
 	for dir : capture_dirs {
 		if dir == .{0, 0} || dir == banned_capture_direction continue;
-		to := pos;
-		for l : 1..length {
-			to += dir;
+
+		enemies_count := 0;
+		last_enemy_pos := -1;
+		for l : 1..length+1 {
+			to := pos + dir * l;
 			cell_to := at(board, to);
 			if is_obstacle(cell_to) {
-				if is_enemies(cell, cell_to) && !is_obstacle(at(board, to + dir)) {
-					process_step(to + dir, true);
-					#if !FIND_ALL { break dir; }
+				if is_enemies(cell, cell_to) {
+					enemies_count += 1;
+					last_enemy_pos = l;
+					if enemies_count > 1 break l;
+				} else {
+					break l;
 				}
-				break l;
+			} else {
+				if enemies_count == 1 && (last_enemy_pos == l - 1 || !land_right_behind) {
+					process_step(to, true);
+					#if !FIND_ALL { break dir; }					
+				}
 			}
 		}
 	}
@@ -897,7 +927,7 @@ click_with_verification :: (using board_interface : *Board_Interface, request : 
 
 	board_interface.cursor = request.click_pos;
 	new_nodes_count := click(board_interface, request.sender_id);
-	print("new_nodes_count(real) : %\n", new_nodes_count);
+	// log("new_nodes_count(real) : %\n", new_nodes_count);
 	new_nodes_real := array_view(history, history.count - new_nodes_count);
 	if is_same_array(new_nodes_real, request.new_nodes) {
 		return true, new_nodes_count;
