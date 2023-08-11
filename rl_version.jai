@@ -1,7 +1,7 @@
 #import "Basic"()(MEMORY_DEBUGGER=true);
 #import "Math";
 #import "Random";
-#import "rfoeraylib/Raylib";
+#import "Raylib";
 #import "Hash";
 
 #load "board.jai";
