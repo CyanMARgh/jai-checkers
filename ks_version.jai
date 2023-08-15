@@ -18,6 +18,11 @@ handle_key_board_interface :: (using board_interface : *Board_Interface, key : K
 	Clamp(*cursor.y, 0, diam - 1);
 }
 c_draw_board :: (canvas : *Canvas, using board_interface : Board_Interface, offset : ivec2, show_cursor : bool) {
+	if canvas.zone.width < diam * 2 || canvas.zone.height < diam + 1 {
+		c_fill(canvas, (c, z) => make_char(#run utf8(" "), background = .GREEN));
+		return;
+	}
+
 	i := 0;
 	current_player_color := KS.Color.[.BRIGHT_BLACK, .BLUE, .RED, .GREEN][current_player];
 

@@ -78,8 +78,9 @@ Game_Scene :: struct {
 		RAIL;
 	} = .FIXED;
 
-	camera : Camera;
+	// camera : Camera;
 	camera_backups : [5]Camera;
+	player_restriction := 4;
 
 	cursor_collision : RayCollision;
 	delta_time, time := 0.;
@@ -87,33 +88,14 @@ Game_Scene :: struct {
 	using visual_data : struct {
 		background := BACKGROUND_COLORS[0];
 
-		caption_angle := 90.;
 		animation_time := 0.;
 		current_step := Step.{type = .NONE};
 		banned_figure_coords : [2]ivec2;
 		banned_cell_coords : [1]ivec2;
-	};	
-	// using audio_data : Audio_Controller;
+		caption_angle := 90.;
+	};
 }
 
-requests_queue : Queue(Board_Request);
-add_some_request :: () {
-	push(*requests_queue, .{
-			sender_id = 2,
-			click_pos = .{2, 6},
-			new_nodes = .[]
-		}
-	);
-	push(*requests_queue, .{
-			sender_id = 2,
-			click_pos = .{3, 6},
-			new_nodes = array_copy(Step.[
-				.{type = .MOVE, data_move = .{from = .{2, 6}, to = .{3, 6}}},
-				.{type = .STEPEND, data_stepend = .{player_old = 2, player_new = 0}}
-			])
-		}
-	);
-}
 process_request :: (using game_scene : *Game_Scene, request : Board_Request) {
 	assert(board.uncommited_count == 0);
 	verified, new_nodes_count := click_with_verification(*board_interface, request);
@@ -141,22 +123,13 @@ main :: () {
 	init_window_and_resources(); defer deinit_window_and_resources();
 
 	using game_scene : Game_Scene;
+
 	init_main_scene(*game_scene); defer deinit_main_scene(*game_scene);
-	defer deinit(*requests_queue);
 
 	while !WindowShouldClose() {
 		delta_time, time = xx min(GetFrameTime(), 1), xx GetTime();
 		process_input(*game_scene);
-		if board.uncommited_count == 0 {
-			request, ok := pop(*requests_queue);
-			if ok {
-				process_request(*game_scene, request);
-				array_free(request.new_nodes);
-			}
-		}
-		// update(*stream_group_slide);
-		// update(*stream_group_crack);
-		// update(*stream_group_upgrade);
+
 		simulate(*game_scene);
 		draw_scene(game_scene);
 		reset_temporary_storage();
@@ -171,7 +144,9 @@ simulate :: (using game_scene : *Game_Scene) {
 			.{-R1, R2, -R1},
 			.{R1, R3, R1}
 		};
-		move_camera(*camera, camera_bounds, 1.);
+		if current_step.type != .STEPEND {
+			move_camera(*(camera_backups[board.current_player]), camera_bounds, 1.);
+		}
 	}
 	background = background * (1 - delta_time) + BACKGROUND_COLORS[board.current_player] * delta_time;
 	process_unapplied_steps(game_scene);
@@ -203,14 +178,14 @@ reset_camera :: (using game_scene : *Game_Scene, id : int) {
 }
 init_cameras :: (using game_scene : *Game_Scene) {
 	for 0..4 reset_camera(game_scene, it);
-	camera = camera_backups[board.current_player];	
 }
 reset_this_camera :: (using game_scene : *Game_Scene) {
 	reset_camera(game_scene, board.current_player);
-	camera = camera_backups[board.current_player];
 }
 process_input :: (using game_scene : *Game_Scene) {
-	find_intersection(game_scene);
+	active_camera := *(camera_backups[board.current_player]);
+	find_intersection(game_scene, active_camera.*);
+
 	if cam_state ==  {
 		case .MOVE;
 		if IsMouseButtonPressed(.LEFT) || IsMouseButtonPressed(.RIGHT) {
@@ -222,7 +197,7 @@ process_input :: (using game_scene : *Game_Scene) {
 		case .FIXED;
 		if IsMouseButtonPressed(.LEFT) {
 			if board_interface.cursor != .{-1, -1} && board.uncommited_count == 0 {
-				new_nodes_count := click(*board_interface);
+				new_nodes_count := click(*board_interface, player_restriction);
 				new_nodes := array_view(board.history, board.history.count - new_nodes_count);
 				// log("new nodes:\n");
 				// for new_nodes log("%\n", it);
@@ -245,11 +220,12 @@ process_input :: (using game_scene : *Game_Scene) {
 		ok = load_board(*board, "b1.board");
 		assert(ok);
 		assert(tmp == board);
-	} else if IsKeyPressed(.N) {
-		add_some_request();
 	}
+	// else if IsKeyPressed(.N) {
+	// 	add_some_request();
+	// }
 }
-find_intersection :: (using game_scene : *Game_Scene) {
+find_intersection :: (using game_scene : *Game_Scene, camera : Camera) {
 	ray := GetMouseRay(GetMousePosition(), camera);
 	S := Vector3.{xx board.diam * CELL_SIZE, CELL_HEIGHT, xx board.diam * CELL_SIZE};
 	c0 := GetRayCollisionBox(ray, .{-.5 * S, .5 * S});
@@ -383,11 +359,6 @@ process_unapplied_steps :: (using game_scene : *Game_Scene) {
 			// play(*stream_group_slide);
 			// play(*stream_group_crack);
 			case .STEPEND; using current_step.data_stepend;
-			caption_angle = (1 - player_new) * 90.; 
-			if ENABLE_CAMERA_ROTATION {
-				camera_backups[player_old] = camera;
-				cam_state = .RAIL;				
-			}
 			// camera = camera_backups[player_new];
 		}
 	}
@@ -404,8 +375,8 @@ process_unapplied_steps :: (using game_scene : *Game_Scene) {
 			case .STEPEND; using current_step.data_stepend;
 			if ENABLE_CAMERA_ROTATION {
 				animation_time += 2 * delta_time;
-				smoothstep :: t => 3 * t * t - 2 * t * t * t;
-				camera = interpolate_cams(camera_backups[player_old], camera_backups[player_new], smoothstep(animation_time));				
+				// smoothstep :: t => 3 * t * t - 2 * t * t * t;
+				// camera = interpolate_cams(camera_backups[player_old], camera_backups[player_new], smoothstep(animation_time));
 			} else {
 				return true;
 			}
@@ -417,10 +388,7 @@ process_unapplied_steps :: (using game_scene : *Game_Scene) {
 	animation_end :: (using game_scene : *Game_Scene) {
 		if current_step.type == {
 			case .STEPEND; using current_step.data_stepend;
-			if ENABLE_CAMERA_ROTATION {
-				camera = camera_backups[player_new];
-				cam_state = .FIXED;				
-			}
+			caption_angle := 90. * (player_new + 1);
 		}
 	}
 	set_blacklist :: (using game_scene : *Game_Scene) {

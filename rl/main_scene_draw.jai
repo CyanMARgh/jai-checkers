@@ -135,6 +135,17 @@ draw_scene :: (using game_scene : Game_Scene) {
 		draw_text_cell(game_scene, at, src, caption_angle, BLACK);
 	}
 
+	camera : Camera = ---;
+	if current_step.type == .STEPEND {
+		camera = interpolate_cams(
+			camera_backups[current_step.data_stepend.player_old],
+			camera_backups[current_step.data_stepend.player_new],
+			animation_time
+		);
+	} else {
+		camera = camera_backups[board.current_player];
+	}
+
 	BeginDrawing(); defer EndDrawing();
 	ClearBackground(.{xx background.x, xx background.y, xx background.z, 255});
 	BeginMode3D(camera);
@@ -174,7 +185,9 @@ draw_scene :: (using game_scene : Game_Scene) {
 		draw_animation(game_scene);
 		draw(*particle_system);
 		// DrawGrid(xx diam, CELL_SIZE);
-		draw_cursor_selection_and_collision(game_scene);
+		if current_step.type == .NONE {
+			draw_cursor_selection_and_collision(game_scene);
+		}
 		{
 			for i : 0..diam-1 {
 				draw_text_cell(.{xx diam, xx i}, false);
