@@ -13,6 +13,7 @@
 #load "rl/utils.jai";
 // #load "networking.jai";
 
+AUTO_PLAY :: false;
 SINGLE_CAM :: false;
 cam_mode :: Cam_Mode.WITH_RAIL;
 
@@ -59,10 +60,23 @@ main :: () {
 
 	while !WindowShouldClose() {
 		delta_time, time :float= xx min(GetFrameTime(), 1), xx GetTime();
-		process_input_camera(game_scene);
+		#if AUTO_PLAY {
+			if board_interface.uncommited_count == 0 {
+				random_click(*board_interface);
+			}
+			if at(board_interface.board, board_interface.cursor) & .BORDER {
+				board_interface.cursor = .{-1, -1};
+			}			
+		}
+
+		#if !AUTO_PLAY {
+			process_input_camera(game_scene);
+		}
 		camera, clickable := get_current_view_camera(game_scene, cam_mode, time);
 
-		process_input(*game_scene, camera, clickable);
+		#if !AUTO_PLAY {
+			process_input(*game_scene, camera, clickable);
+		}
 		//process incoming messages
 		simulate(*game_scene, delta_time);
 		draw_scene(game_scene, camera, time);
@@ -226,4 +240,29 @@ interpolate_cams :: (cam_a : Camera, cam_b : Camera, t : float) -> Camera {
 		cam_a.fovy,
 		cam_a.projection
 	};
+}
+
+random_click :: (using board_interface : *Board_Interface) {
+	assert(uncommited_count == 0);
+	steps_count := shown_steps_move.count + shown_steps_capture.count;
+	clickable_count := clickable_figures_move.count + clickable_figures_capture.count;
+	if steps_count > 0 {
+		id := cast(int)(random_get() % cast(u64)steps_count);
+		if id < shown_steps_move.count {
+			cursor = shown_steps_move[id];			
+		} else {
+			cursor = shown_steps_capture[id - shown_steps_move.count];
+		}
+		nodes := click(board_interface);
+		for i : 1..nodes undo_single(board);
+	} else if clickable_count > 0 {
+		id := cast(int)(random_get() % cast(u64)clickable_count);
+		if id < clickable_figures_move.count {
+			cursor = clickable_figures_move[id];			
+		} else {
+			cursor = clickable_figures_capture[id - clickable_figures_move.count];
+		}
+		nodes := click(board_interface);
+		for i : 1..nodes undo_single(board);
+	}
 }

@@ -55,7 +55,7 @@ Cell :: enum_flags u16 {
 	OBSTACLE	:: 0xF0FF;
 }
 Step :: struct {
-	type : enum u8 { NONE; INVALID; MOVE; CAPTURE; BORDER; ADDBOOST; STEPEND; UPGRADE; };
+	type : enum u8 { NONE; INVALID; MOVE; CAPTURE; BORDER; ADDBOOST; STEPEND; SEQEND; UPGRADE; };
 	union {
 		data_move : struct {
 			from, to : ivec2;
@@ -79,7 +79,11 @@ Step :: struct {
 		data_addboost : struct {
 			pos : ivec2;
 			bef, aft : Cell;			
-		}
+		};
+		data_seqend : struct {
+			active_figure : ivec2;
+			last_capture_dir : ivec2;
+		};
 	}
 }
 // 1) MOVE [, UPGRADE] [barrier nodes]STEPEND
@@ -298,19 +302,28 @@ gen_step_upgrade :: (using board : Board, pos : ivec2) -> Step {
 }
 
 get_next_player :: (using board : Board) -> int {
-	can_kill, can_move := what_players_can_do(board);
 	for i : 1..4 {
 		p := (current_player + i) % 4;
-		if can_kill[p] || can_move[p] return p;
+		can_kill, can_move := what_player_can_do(board, p);
+		if can_kill || can_move return p;
 	}
 	return 4;
 }
 gen_step_end :: (using board : Board) -> Step {
+	assert(active_figure == .{-1 ,-1} && last_capture_dir == .{0, 0});
 	return .{type = .STEPEND, data_stepend = .{
 		player_old = current_player,
 		player_new = get_next_player(board)
 	}};
 }
+gen_sequence_end :: (using board : Board) -> Step {
+	assert(active_figure != .{-1 ,-1} && last_capture_dir != .{0, 0});
+	return .{type = .SEQEND, data_seqend = .{
+		active_figure = active_figure,
+		last_capture_dir = last_capture_dir
+	}};
+}
+
 apply :: (using board : *Board, step : Step) {
 	if #complete step.type == {
 		case .MOVE; using step.data_move; 
@@ -336,9 +349,11 @@ apply :: (using board : *Board, step : Step) {
 		case .UPGRADE; using step.data_upgrade;
 		at_ptr(board, pos).* = aft;
 
-		case .STEPEND; using step.data_stepend;
+		case .SEQEND;
 		active_figure = .{-1, -1};
 		last_capture_dir = .{};
+
+		case .STEPEND; using step.data_stepend;
 		current_player = player_new;
 		step_id += 1;
 
@@ -380,16 +395,6 @@ undo_single :: (using board : *Board) {
 	uncommited_count += 1;
 	step := history[history.count - uncommited_count];
 
-	update_dir_and_active_figure :: (using board : *Board) {
-		if history.count > uncommited_count {			
-			prev_step := history[history.count - uncommited_count - 1];
-			if prev_step.type == .CAPTURE {
-				last_capture_dir = prev_step.data_capture.dir;
-				active_figure = prev_step.data_capture.to;				
-			}
-		}
-	}
-
 	if #complete step.type == {
 		case .MOVE; using step.data_move; 
 		c1, c2 := at_ptr(board, from), at_ptr(board, to);
@@ -412,6 +417,10 @@ undo_single :: (using board : *Board) {
 		case .UPGRADE; using step.data_upgrade;
 		at_ptr(board, pos).* = bef;
 
+		case .SEQEND;
+		active_figure = step.data_seqend.active_figure;
+		last_capture_dir = step.data_seqend.last_capture_dir;
+
 		case .STEPEND; using step.data_stepend;
 		assert(active_figure == .{-1, -1});
 		assert(last_capture_dir == .{0, 0});
@@ -430,7 +439,6 @@ undo_single :: (using board : *Board) {
 		case .INVALID; assert(false);
 		case .NONE; assert(false);
 	} 
-	update_dir_and_active_figure(board);
 }
 redo_single :: (using board : *Board) {
 	step := history[history.count - uncommited_count];
@@ -565,6 +573,10 @@ gen_apply_and_write_board_nodes :: (using board : *Board) -> nodes:int {
 	}
 	return nodes;
 }
+end_sequence :: (using board : *Board) -> nodes:int {
+	apply_and_write(board, gen_sequence_end(board));
+	return 1;
+}
 end_step :: (using board : *Board) -> nodes:int {
 	nodes := 1;
 	if enable_border {
@@ -612,6 +624,7 @@ try_step :: (using board : *Board, from : ivec2, to : ivec2) -> enum u8 {NONE; M
 		if from != active_figure then return .NONE, nodes;
 		// end sequence
 		if (length == 0) && (!must_continue_capture || !can_continue_capture(board)) {
+			nodes += end_sequence(board);
 			nodes += end_step(board);
 			return .ENDSEQ, nodes;
 		}
@@ -644,15 +657,17 @@ try_step :: (using board : *Board, from : ivec2, to : ivec2) -> enum u8 {NONE; M
 }
 should_current_player_capture :: (using board : *Board) -> bool {
 	if !must_capture return false;
-	can_capture, can_move := what_players_can_do(board);
-	return can_capture[current_player];
+	can_capture, can_move := what_player_can_do(board, current_player);
+	return can_capture;
 }
 is_final :: (using board : *Board) -> bool, winner:int {
+	if active_figure != .{-1, -1} then return false, 4;
+	if current_player == 4 then return true, 4;
 	alive, winner := 0, 4;
-	can_capture, can_move := what_players_can_do(board);
-	for i : 0..3 {
-		if can_capture[i] || can_move[i] {
-			winner = i;
+	for p : 0..3 {
+		can_capture, can_move := what_player_can_do(board, p);
+		if can_capture || can_move {
+			winner = p;
 			alive += 1;
 		}
 	}
@@ -666,28 +681,65 @@ Board_Interface :: struct {
 
 	shown_steps_move : []ivec2;
 	shown_steps_capture : []ivec2;
+
+	clickable_figures_move : []ivec2;
+	clickable_figures_capture : []ivec2;
+}
+init :: (board_interface : *Board_Interface, board : *Board) {
+	init(board);
+	board_interface.board = board;
+	refresh_possible_moves(board_interface);
 }
 what_figure_can_do :: (using board : Board, pos : ivec2, banned_capture_direction : ivec2) -> can_capture:bool, can_move:bool {
 	can_capture, can_move := get_possible_steps(board, pos, false, banned_capture_direction, false);
 	return can_capture, can_move;
 }
-what_players_can_do :: (using board : Board) -> can_capture:[4]bool, can_move:[4]bool {
-	can_capture, can_move : [4]bool;
-	i := 0;
-	for y : 0..diam-1 {
-		for x : 0..diam-1 {
-			defer i += 1;
-			cell := cells[i];
-			p := get_player_by_code(cell);
-			if p == 4 continue;
-			if can_capture[p] && can_move[p] continue;
-			can_capture_f, can_move_f := what_figure_can_do(board, .{xx x, xx y}, .{});
+what_player_can_do :: (using board : Board, player_id : int, $FIND_ALL := false) -> can_capture:bool, can_move:bool, list_capture:[]ivec2, list_move:[]ivec2 {
+	//TODO maybe check only one player
+	list_capture, list_move : [..]ivec2;
+	// list_move_or_capture
+	can_capture, can_move : bool;
 
-			can_capture[p] |= can_capture_f;
-			can_move[p] |= can_move_f;
+	if active_figure == .{-1, -1} then {
+		i := 0;
+		for y : 0..diam-1 {
+			for x : 0..diam-1 {
+				defer i += 1;
+				cell := cells[i];
+				p := get_player_by_code(cell);
+				if p != player_id continue;
+				pos := ivec2.{xx x, xx y};
+				can_capture_f, can_move_f := what_figure_can_do(board, pos, .{});
+				can_capture |= can_capture_f;
+				can_move |= can_move_f;
+
+				#if FIND_ALL {
+					if can_capture_f then array_add(*list_capture, pos);
+					if can_move_f then array_add(*list_move, pos);
+				} else {
+					if can_capture && can_move break y;
+				}
+			}
+		}		
+	} else {
+		//TODO
+		//asert p == player_id
+		//TODO
+		can_capture_f, _ := what_figure_can_do(board, active_figure, -last_capture_dir);
+		can_move_f := true;
+
+		can_capture = can_capture_f;
+		can_move = can_move_f;
+		#if FIND_ALL {			
+			if can_capture_f array_add(*list_capture, active_figure);
+			if can_move_f array_add(*list_move, active_figure);
 		}
 	}
-	return can_capture, can_move;
+	if can_capture && must_capture {
+		array_reset(*list_move);
+		can_move = false;
+	}
+	return can_capture, can_move, list_capture, list_move;
 }
 can_continue_capture :: (using board : Board) -> bool {
 	assert(active_figure != .{-1, -1});
@@ -833,9 +885,33 @@ get_possible_steps :: (using board : Board, pos : ivec2, should_capture : bool, 
 	}
 	return can_capture, can_move, steps_capture, steps_move;
 }
+// get_clickable_figures :: (using board : Board) -> list_capture:[]ivec2, list_move:[]ivec2 {
+// 	list_capture, list_move : [..]ivec2;
+// 	// 	i := 0;
+// 	// 	for y : 0..diam-1 {
+// 	// 		for x : 0..diam-1 {
+// 	// 			defer i += 1;
+// 	// 			cell := cells[i];
+// 	// 			p := get_player_by_code(cell);
+// 	// 			if p == 4 continue;
+// 	// 			if can_capture[p] && can_move[p] continue;
+// 	// 			can_capture_f, can_move_f := what_figure_can_do(board, .{xx x, xx y}, .{});
+
+// 	// 			can_capture[p] |= can_capture_f;
+// 	// 			can_move[p] |= can_move_f;
+// 	// 		}
+// 	// 	}
+// 	// 	return can_capture, can_move;
+// 	// }
+// }
 refresh_possible_moves :: (using board_interface : *Board_Interface) {
 	array_reset(*shown_steps_move);
 	array_reset(*shown_steps_capture);
+
+	array_reset(*clickable_figures_move);
+	array_reset(*clickable_figures_capture);
+
+	_, _, clickable_figures_capture, clickable_figures_move = what_player_can_do(board, current_player, true);
 
 	if selected != .{-1, -1} {
 		_, _, shown_steps_capture, shown_steps_move = get_possible_steps(
@@ -851,6 +927,8 @@ deinit :: (using board_interface : *Board_Interface) {
 	deinit(board);
 	array_free(shown_steps_move);
 	array_free(shown_steps_capture);
+	array_free(clickable_figures_move);
+	array_free(clickable_figures_capture);
 }
 
 #load "serialization.jai";
@@ -912,6 +990,7 @@ operator== :: (s1 : Step, s2 : Step) -> bool {
 		case .UPGRADE; return is_same_fields(s1.data_upgrade, s2.data_upgrade);
 		case .STEPEND; return is_same_fields(s1.data_stepend, s2.data_stepend);
 		case .ADDBOOST; return is_same_fields(s1.data_addboost, s2.data_addboost);
+		case .SEQEND; return is_same_fields(s1.data_seqend, s2.data_seqend);
 	}
 	return false;
 }

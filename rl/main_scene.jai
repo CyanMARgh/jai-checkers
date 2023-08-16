@@ -16,6 +16,8 @@ using visual_properties : struct {
 
 	SHINING_BORDERS :: true;
 	COLOR_ZONES :: true;
+	SHOW_CLICKABLE_FIGURES :: true;
+	SHOW_POSSIBLE_STEPS :: true;
 }
 Game_Scene :: struct {
 	board : Board; 
@@ -37,8 +39,7 @@ Game_Scene :: struct {
 	};
 }
 init_main_scene :: (using game_scene : *Game_Scene) {
-	init(*board);
-	board_interface.board = *board;
+	init(*board_interface, *board);
 }
 deinit_main_scene :: (using game_scene : *Game_Scene) {
 	deinit(*board_interface);
@@ -259,7 +260,7 @@ draw_scene :: (using game_scene : Game_Scene, camera : Camera, time : float) {
 	draw_cursor_selection_and_collision :: (using game_scene : Game_Scene) {
 		cursor := board_interface.cursor;
 		if cursor != .{-1, -1} then {
-			assert(cursor_collision.hit);
+			// assert(cursor_collision.hit);
 			#if DEBUG {
 				p1 := cursor_collision.point;
 				p2 := p1 + .2 * cursor_collision.normal;
@@ -303,6 +304,10 @@ draw_scene :: (using game_scene : Game_Scene, camera : Camera, time : float) {
 			result_color := mix(base_color, BLACK, t);
 			DrawModel(model_cell, pos_3, lerp(1, .1, t), result_color); 
 		}
+	}
+	draw_click_option :: (using game_scene : Game_Scene, at : ivec2, color : Color) {
+		pos := to_vec3(board, at);
+		DrawModel(model_cylinder, pos + Vector3.{0, CELL_HEIGHT / 4, 0}, 1.2, color);	
 	}
 	draw_step_option :: (using game_scene : Game_Scene, at : ivec2, color : Color) {
 		pos := to_vec3(board, at) + .{0, CELL_HEIGHT, 0};
@@ -354,7 +359,6 @@ draw_scene :: (using game_scene : Game_Scene, camera : Camera, time : float) {
 						cell_color := get_cell_color(cell_coord, cell, time, rules);
 						DrawModel(model_cell, pos, 1, cell_color);
 					}
-
 				}
 				if (cell & .FIGURE) {
 					if !my_array_find(banned_figure_coords, cell_coord) {
@@ -364,11 +368,26 @@ draw_scene :: (using game_scene : Game_Scene, camera : Camera, time : float) {
 			}
 		}
 		if current_step.type == .NONE {
-			for board_interface.shown_steps_capture {
-				draw_step_option(game_scene, it, .{255, 0, 0, 100});				
-			} 
-			for board_interface.shown_steps_move {
-				draw_step_option(game_scene, it, .{0, 255, 0, 100});			
+			if SHOW_POSSIBLE_STEPS {
+				for board_interface.shown_steps_capture {
+					draw_step_option(game_scene, it, .{255, 0, 0, 100});
+				} 
+				for board_interface.shown_steps_move {
+					draw_step_option(game_scene, it, .{0, 255, 0, 100});
+				}
+			}
+			if SHOW_CLICKABLE_FIGURES {
+				figure_flag :Cell= xx(1 << current_player);
+				for board_interface.clickable_figures_capture {
+					if at(board, it) & figure_flag {
+						draw_click_option(game_scene, it, .{255, 0, 0, 100});
+					}
+				}
+				for board_interface.clickable_figures_move {
+					if at(board, it) & figure_flag {
+						draw_click_option(game_scene, it, .{0, 255, 0, 100});
+					}
+				}				
 			}
 		}
 
