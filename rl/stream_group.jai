@@ -15,6 +15,7 @@ deinit :: (using stream_group : *Stream_Group) {
 play :: (using stream_group : *Stream_Group) {
 	for streams {
 		if !IsMusicStreamPlaying(it) {
+			// print("!!!\n");
 			PlayMusicStream(it);
 			break;
 		}
