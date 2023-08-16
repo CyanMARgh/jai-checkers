@@ -123,15 +123,13 @@ process_unapplied_steps :: (using game_scene : *Game_Scene, delta_time : float) 
 			if diff & .KING_BLUE emit(*particle_system, point, base_color = BLUE);
 			if diff & .KING_BLACK emit(*particle_system, point, base_color = BLACK);
 			if diff & .KING_GREEN emit(*particle_system, point, base_color = GREEN);
+			play(*sg_upgrade);
 			case .MOVE;
 			play(*sg_slide);
-			// play(*stream_group_slide);
 			case .CAPTURE;
 			play(*sg_slide);
-			// play(*stream_group_slide);
-			// play(*stream_group_crack);
+			play(*sg_crack);
 			case .STEPEND; using current_step.data_stepend;
-			// camera = camera_backups[player_new];
 		}
 	}
 	update_animation :: (using game_scene : *Game_Scene, delta_time : float) -> current_animation_ended:bool {

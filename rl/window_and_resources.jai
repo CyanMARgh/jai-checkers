@@ -6,7 +6,7 @@ using global_resources : struct {
 	texture_rose : Texture;
 	font : Font;
 
-	sg_slide : Stream_Group;
+	sg_slide, sg_crack, sg_upgrade : Stream_Group;
 }
 init_window_and_resources :: () {
 	W0, H0 :: 1200, 800;
@@ -16,6 +16,8 @@ init_window_and_resources :: () {
 
 	InitAudioDevice();
 	sg_slide = make_stream_group("res/slide2.mp3");
+	sg_crack = make_stream_group("res/crack.wav", .3);
+	sg_upgrade = make_stream_group("res/upgrade.wav");
 
 	gl_load(*gl);
 	SetTargetFPS(60);
@@ -38,6 +40,13 @@ deinit_window_and_resources :: () {
 	UnloadTexture(texture_rose);
 
 	deinit(*sg_slide);
+	deinit(*sg_crack);
+	deinit(*sg_upgrade);
 	CloseAudioDevice();
 	CloseWindow();
+}
+update_audio :: () {
+	update(*sg_slide);
+	update(*sg_crack);
+	update(*sg_upgrade);
 }

@@ -1,11 +1,12 @@
 Stream_Group :: struct {
 	streams : [3]Music;
 }
-make_stream_group :: (src : *u8) -> Stream_Group {
+make_stream_group :: (src : *u8, voulme := 1.) -> Stream_Group {
 	using result : Stream_Group;
 	for * streams {
 		it.* = LoadMusicStream(src);
 		it.looping = false;
+		SetMusicVolume(it.*, voulme);
 	}
 	return result;
 }

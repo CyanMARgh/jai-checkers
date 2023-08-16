@@ -39,7 +39,7 @@ main :: () {
 			rules = .{
 				must_capture = true,
 				diagonal = false,
-				leveled_upgrade = false,
+				leveled_upgrade = true,
 				rows_offset = 1,
 				rows = 2,
 				diam = 10,
@@ -58,21 +58,19 @@ main :: () {
 	init_cameras(game_scene);
 
 	while !WindowShouldClose() {
-		__frame += 1;
 		delta_time, time :float= xx min(GetFrameTime(), 1), xx GetTime();
 		process_input_camera(game_scene);
 		camera, clickable := get_current_view_camera(game_scene, cam_mode, time);
 
 		process_input(*game_scene, camera, clickable);
-
+		//process incoming messages
 		simulate(*game_scene, delta_time);
 		draw_scene(game_scene, camera, time);
 
-		update(*sg_slide);
+		update_audio();
 		reset_temporary_storage();
 	}
 }
-__frame := 0;
 
 #scope_file
 #if SINGLE_CAM {
