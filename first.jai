@@ -9,13 +9,13 @@ IMPORT_EXTRA_PATH :: "/home/cyanmargh/projects/jai/";
 // - ui:
 //		- start menu
 //		- "escape" menu
-// - list of clickable pieces
 // - dead pieces (?)
 // - undo last step (full)
 // - can continue capture after upgrade (rule), default = true
 // - must_capture : enum u8 { OFF; ON; ___QUEENS___; } = .OFF;
 // - save board
 // - board editor mode
+// - autoclick, if single step aviable
 
 #run {
 	set_build_options_dc(.{do_output=false});

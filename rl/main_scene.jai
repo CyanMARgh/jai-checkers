@@ -144,7 +144,7 @@ process_unapplied_steps :: (using game_scene : *Game_Scene, delta_time : float) 
 			case .BORDER;
 			animation_time += 5 * delta_time;
 			case .STEPEND; using current_step.data_stepend;
-			if immediate_switch {
+			if immediate_switch || player_new == player_old {
 				animation_time = 1;
 			} else {
 				animation_time += 2 * delta_time;				

@@ -11,6 +11,7 @@
 #load "rl/window_and_resources.jai";
 #load "rl/main_scene.jai";
 #load "rl/utils.jai";
+#load "rl/ui.jai";
 // #load "networking.jai";
 
 AUTO_PLAY :: false;
@@ -18,7 +19,32 @@ SINGLE_CAM :: false;
 cam_mode :: Cam_Mode.WITH_RAIL;
 
 main :: () {
-	defer report_memory_leaks(); 
+	defer report_memory_leaks();
+	init_window_and_resources(); defer deinit_window_and_resources();
+
+	// buffer := LoadRenderTexture(GetScreenWidth(), GetScreenHeight());
+	ui_init(); defer ui_deinit();
+
+	while !WindowShouldClose() {
+		W, H := GetScreenWidth(), GetScreenHeight();
+		ui_begin();
+			if ui_button(.{0, 0, 200, 40}, "button 0") {
+				print("click(0)!\n");
+			}
+			if ui_button(.{0, 40, 200, 40}, "button 1") {
+				print("click(1)!\n");
+			}
+		ui_end();
+	
+		BeginDrawing();
+			ClearBackground(WHITE);
+			ui_draw_buffer();
+		EndDrawing();
+	}
+}
+__frame := 0;
+_main :: () {
+	defer report_memory_leaks();
 	init_window_and_resources(); defer deinit_window_and_resources();
 
 	using game_scene := Game_Scene.{
@@ -60,6 +86,9 @@ main :: () {
 
 	while !WindowShouldClose() {
 		delta_time, time :float= xx min(GetFrameTime(), 1), xx GetTime();
+
+
+
 		#if AUTO_PLAY {
 			if board_interface.uncommited_count == 0 {
 				random_click(*board_interface);

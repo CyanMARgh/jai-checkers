@@ -684,6 +684,7 @@ Board_Interface :: struct {
 
 	clickable_figures_move : []ivec2;
 	clickable_figures_capture : []ivec2;
+	clickable_figures_capture_or_move : []ivec2;
 }
 init :: (board_interface : *Board_Interface, board : *Board) {
 	init(board);
@@ -694,10 +695,8 @@ what_figure_can_do :: (using board : Board, pos : ivec2, banned_capture_directio
 	can_capture, can_move := get_possible_steps(board, pos, false, banned_capture_direction, false);
 	return can_capture, can_move;
 }
-what_player_can_do :: (using board : Board, player_id : int, $FIND_ALL := false) -> can_capture:bool, can_move:bool, list_capture:[]ivec2, list_move:[]ivec2 {
-	//TODO maybe check only one player
-	list_capture, list_move : [..]ivec2;
-	// list_move_or_capture
+what_player_can_do :: (using board : Board, player_id : int, $FIND_ALL := false) -> can_capture:bool, can_move:bool, list_capture:[]ivec2, list_move:[]ivec2, list_capture_or_move:[]ivec2 {
+	list_capture, list_move, list_capture_or_move : [..]ivec2;
 	can_capture, can_move : bool;
 
 	if active_figure == .{-1, -1} then {
@@ -710,36 +709,46 @@ what_player_can_do :: (using board : Board, player_id : int, $FIND_ALL := false)
 				if p != player_id continue;
 				pos := ivec2.{xx x, xx y};
 				can_capture_f, can_move_f := what_figure_can_do(board, pos, .{});
+
 				can_capture |= can_capture_f;
 				can_move |= can_move_f;
-
 				#if FIND_ALL {
-					if can_capture_f then array_add(*list_capture, pos);
-					if can_move_f then array_add(*list_move, pos);
+					if can_capture_f && can_move_f {
+						array_add(*list_capture_or_move, pos);
+					} else if can_capture_f {
+						array_add(*list_capture, pos);
+					} else if can_move_f {
+						array_add(*list_move, pos);
+					}
 				} else {
 					if can_capture && can_move break y;
 				}
 			}
 		}		
 	} else {
-		//TODO
-		//asert p == player_id
-		//TODO
+		assert(current_player == player_id);
 		can_capture_f, _ := what_figure_can_do(board, active_figure, -last_capture_dir);
 		can_move_f := true;
 
-		can_capture = can_capture_f;
-		can_move = can_move_f;
-		#if FIND_ALL {			
-			if can_capture_f array_add(*list_capture, active_figure);
-			if can_move_f array_add(*list_move, active_figure);
+		can_capture |= can_capture_f;
+		can_move |= can_move_f;
+		#if FIND_ALL {
+			if can_capture_f && can_move_f {
+				array_add(*list_capture_or_move, active_figure);
+			} else if can_capture_f {
+				array_add(*list_capture, active_figure);
+			} else if can_move_f {
+				array_add(*list_move, active_figure);
+			}
 		}
 	}
 	if can_capture && must_capture {
 		array_reset(*list_move);
+		array_add(*list_capture, ..list_capture_or_move);
+		array_reset(*list_capture_or_move);
 		can_move = false;
 	}
-	return can_capture, can_move, list_capture, list_move;
+	return can_capture, can_move, list_capture, list_move, list_capture_or_move;
 }
 can_continue_capture :: (using board : Board) -> bool {
 	assert(active_figure != .{-1, -1});
@@ -765,13 +774,10 @@ can_continue_capture :: (using board : Board) -> bool {
 	return false;
 }
 click :: (using board_interface : *Board_Interface, sender_id := 4) -> nodes:int {
-	// log("(0)\n");
 	if sender_id != 4 && sender_id != current_player return 0;
-	// log("(1)\n");
 	assert(uncommited_count >= 0);
 	if uncommited_count return 0;
 	assert(cursor.x >= 0 && cursor.y >= 0 && cursor.x < diam && cursor.y < diam);
-	// log("(2)\n");
 	defer refresh_possible_moves(board_interface);
 	is_clickable :: (using board : *Board, pos : ivec2) -> bool {
 		if !is_owned_by(at(board, pos), current_player) return false;
@@ -779,7 +785,6 @@ click :: (using board_interface : *Board_Interface, sender_id := 4) -> nodes:int
 		if (should_current_player_capture(board) || !can_move) && !can_capture return false;
 		return true;
 	}
-	// log("(3)\n");
 	if selected == .{-1, -1} then {
 		if active_figure != .{-1, -1} then {
 			if active_figure == cursor {
@@ -792,9 +797,7 @@ click :: (using board_interface : *Board_Interface, sender_id := 4) -> nodes:int
 		}
 		return 0;
 	} else {
-		// log("(4)\n");
 		result, nodes := try_step(board, selected,	cursor);
-		// log("(5)\n");
 		if #complete result == {
 			case .NONE;
 			if active_figure == .{-1, -1} {
@@ -821,17 +824,16 @@ click :: (using board_interface : *Board_Interface, sender_id := 4) -> nodes:int
 				selected = .{-1, -1};
 			}
 		}
-		// log("(6)\n");
 		return nodes;
 	}
 }
-get_possible_steps :: (using board : Board, pos : ivec2, should_capture : bool, banned_capture_direction : ivec2, $FIND_ALL : bool) -> can_capture:bool, can_move:bool, steps_capture:[]ivec2, steps_move:[]ivec2 {
+
+get_possible_steps :: (using board : Board, pos : ivec2, should_capture : bool, banned_capture_direction : ivec2, $FIND_ALL : bool) -> can_capture:bool, can_move:bool, steps_capture:[]ivec2, steps_move:[]ivec2 {	
 	cell := at(board, pos);
 	length, capture_dirs, move_dirs := get_properties(cell, rules);
 
 	steps_capture : [..]ivec2;
 	steps_move : [..]ivec2;
-
 	can_capture, can_move := false;
 
 	process_step :: (to : ivec2, is_capture : bool) #expand {
@@ -870,6 +872,7 @@ get_possible_steps :: (using board : Board, pos : ivec2, should_capture : bool, 
 			}
 		}
 	}
+
 	if !should_capture {
 		for dir : move_dirs {
 			if dir == .{0, 0} continue;
@@ -882,36 +885,19 @@ get_possible_steps :: (using board : Board, pos : ivec2, should_capture : bool, 
 				#if !FIND_ALL { break dir; }
 			}
 		}
-	}
+	}		
+	
 	return can_capture, can_move, steps_capture, steps_move;
 }
-// get_clickable_figures :: (using board : Board) -> list_capture:[]ivec2, list_move:[]ivec2 {
-// 	list_capture, list_move : [..]ivec2;
-// 	// 	i := 0;
-// 	// 	for y : 0..diam-1 {
-// 	// 		for x : 0..diam-1 {
-// 	// 			defer i += 1;
-// 	// 			cell := cells[i];
-// 	// 			p := get_player_by_code(cell);
-// 	// 			if p == 4 continue;
-// 	// 			if can_capture[p] && can_move[p] continue;
-// 	// 			can_capture_f, can_move_f := what_figure_can_do(board, .{xx x, xx y}, .{});
-
-// 	// 			can_capture[p] |= can_capture_f;
-// 	// 			can_move[p] |= can_move_f;
-// 	// 		}
-// 	// 	}
-// 	// 	return can_capture, can_move;
-// 	// }
-// }
 refresh_possible_moves :: (using board_interface : *Board_Interface) {
 	array_reset(*shown_steps_move);
 	array_reset(*shown_steps_capture);
 
 	array_reset(*clickable_figures_move);
 	array_reset(*clickable_figures_capture);
+	array_reset(*clickable_figures_capture_or_move);
 
-	_, _, clickable_figures_capture, clickable_figures_move = what_player_can_do(board, current_player, true);
+	_, _, clickable_figures_capture, clickable_figures_move, clickable_figures_capture_or_move = what_player_can_do(board, current_player, true);
 
 	if selected != .{-1, -1} {
 		_, _, shown_steps_capture, shown_steps_move = get_possible_steps(
@@ -929,6 +915,7 @@ deinit :: (using board_interface : *Board_Interface) {
 	array_free(shown_steps_capture);
 	array_free(clickable_figures_move);
 	array_free(clickable_figures_capture);
+	array_free(clickable_figures_capture_or_move);
 }
 
 #load "serialization.jai";
