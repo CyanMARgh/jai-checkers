@@ -25,6 +25,7 @@ main :: () {
 	// buffer := LoadRenderTexture(GetScreenWidth(), GetScreenHeight());
 	ui_init(); defer ui_deinit();
 
+
 	while !WindowShouldClose() {
 		W, H := GetScreenWidth(), GetScreenHeight();
 		ui_begin();

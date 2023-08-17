@@ -98,5 +98,4 @@ press_on_this_frame : bool;
 ui_buffer : RenderTexture2D;
 ui_font : Font;
 
-#import "Hash_Table";
 W, H : s32;
