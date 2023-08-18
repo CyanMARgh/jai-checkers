@@ -18,16 +18,20 @@ AUTO_PLAY :: false;
 SINGLE_CAM :: true;
 cam_mode :: Cam_Mode.WITH_RAIL;
 
-_main :: () {
+main :: () {
 	defer report_memory_leaks();
 	init_window_and_resources(); defer deinit_window_and_resources();
 
 	// buffer := LoadRenderTexture(GetScreenWidth(), GetScreenHeight());
 	ui_init(); defer ui_deinit();
 
+	input_text : [..]u8; defer array_free(input_text);
 
 	while !WindowShouldClose() {
 		W, H := GetScreenWidth(), GetScreenHeight();
+		// if key != .NULL || char != .NULL {
+		// 	print("%, %\n", key, char);
+		// }
 		ui_begin();
 			if ui_button(.{0, 0, 200, 40}, "button 0") {
 				print("click(0)!\n");
@@ -35,16 +39,19 @@ _main :: () {
 			if ui_button(.{0, 40, 200, 40}, "button 1") {
 				print("click(1)!\n");
 			}
+			ui_text_input(.{0, 80, 300, 40}, *input_text, "input text");
 		ui_end();
 	
 		BeginDrawing();
 			ClearBackground(WHITE);
 			ui_draw_buffer();
+
+			 if is_ui_focused() DrawCircle(400, 400, 50, GREEN);
 		EndDrawing();
 	}
 }
 
-main :: () {
+_main :: () {
 	defer report_memory_leaks();
 	init_window_and_resources(); defer deinit_window_and_resources();
 

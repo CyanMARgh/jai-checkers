@@ -6,6 +6,122 @@ ui_init :: () {
 ui_deinit :: () {
 	UnloadRenderTexture(ui_buffer);
 }
+
+ui_begin :: () {
+	W_new, H_new := GetScreenWidth(), GetScreenHeight();
+	if W_new != W || H_new != H {
+		W, H = W_new, H_new;
+		UnloadRenderTexture(ui_buffer);
+		ui_buffer = LoadRenderTexture(W, H);
+	}
+
+	mouse_pos = GetMousePosition();
+	release_on_this_frame = IsMouseButtonReleased(.LEFT);
+	press_on_this_frame = IsMouseButtonPressed(.LEFT);
+	assert(!release_on_this_frame || !press_on_this_frame);
+
+	input_key, input_char = GetKeyPressed(), GetCharPressed();
+	if input_key || input_char {
+		print("%, %\n", input_key, input_char);
+	}
+
+	BeginTextureMode(ui_buffer);
+	ClearBackground(BLANK);
+}
+ui_end :: () {
+	if press_on_this_frame {
+		down_tag = pressed_tag;
+		if pressed_tag == "" {
+			focus_tag = "";
+		}
+	} else if release_on_this_frame {
+		down_tag = "";
+	}
+	pressed_tag, released_tag = "";
+	EndTextureMode();
+}
+ui_draw_buffer :: () {
+	DrawTexturePro(
+		ui_buffer.texture, 
+		.{0, xx H, xx W, xx-H},
+		.{0, 0, xx W, xx H},
+		.{0, 0}, 0, WHITE
+	);	
+}
+
+ui_button :: (_rect : Rectangle, tag : string) -> bool {
+	rect := add_offset(_rect, UI_GAP_WIDTH);
+	result := ui_click(rect, tag, false);
+	ui_draw_text_block(rect, tag, shadow = down_tag == tag);
+	return result;
+}
+
+is_printable :: (char : KeyboardKey) -> bool {
+	code := cast(u32) char;
+	return code >= 32 && code <= 126;
+}
+
+ui_text_input :: (_rect : Rectangle, buffer : *[..]u8, tag : string) {
+	rect := add_offset(_rect, UI_GAP_WIDTH);
+	add_char :: (buffer : *[..]u8, char : s32) {
+		while char {
+			array_add(buffer, xx(char & 0xFF));
+			char >>= 8;
+		}
+	}
+	if tag == focus_tag {
+		if is_printable(input_char) {
+			add_char(buffer, xx input_char);
+		} else if input_key == .BACKSPACE {
+			if buffer.count > 0 {
+				buffer.count -= 1;
+			}
+		}
+	}
+
+	ui_click(rect, tag, true);
+	ui_draw_text_block(rect, to_string(buffer.*), shadow = tag == focus_tag);
+}
+
+is_ui_focused :: () -> bool {
+	return focus_tag != "";
+}
+
+#scope_file
+input_char, input_key : KeyboardKey;
+
+pressed_tag : string;
+down_tag : string;
+released_tag : string;
+focus_tag : string;
+
+
+mouse_pos : Vector2;
+release_on_this_frame : bool;
+press_on_this_frame : bool;
+
+ui_buffer : RenderTexture2D;
+ui_font : Font;
+
+W, H : s32;
+
+ui_click :: (rect : Rectangle, tag : string, focus : bool) -> bool {
+	if press_on_this_frame {
+		if CheckCollisionPointRec(mouse_pos, rect) {
+			pressed_tag = tag;
+			focus_tag = ifx focus then tag else "";
+		}
+	} else if release_on_this_frame {
+		if CheckCollisionPointRec(mouse_pos, rect) {
+			released_tag = tag;
+			if down_tag == tag {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
 add_offset :: (rect : Rectangle, offset : float) -> Rectangle {
 	return .{
 		rect.x + offset,
@@ -16,11 +132,10 @@ add_offset :: (rect : Rectangle, offset : float) -> Rectangle {
 }
 UI_GAP_WIDTH :: 2.;
 UI_BORDER_WIDTH :: 5.;
-
 ui_draw_base :: (rect : Rectangle, shadow := false) -> Rectangle {
 	c0, c1, c2, c3 : Color = .{131, 131, 131, 255}, .{200, 200, 200, 255}, .{100, 100, 100, 255}, .{170, 170, 170, 255};
-	outer := add_offset(rect, UI_GAP_WIDTH);	
-	inner := add_offset(rect, UI_BORDER_WIDTH);
+	outer := rect;//add_offset(rect, UI_GAP_WIDTH);
+	inner := add_offset(outer, UI_BORDER_WIDTH);
 	DrawRectangleRec(outer, ifx shadow then c2 else c0);
 	DrawRectangleRec(inner, ifx shadow then c3 else c1);
 	return inner;
@@ -41,61 +156,3 @@ ui_draw_text_block :: (rect : Rectangle, text : string, shadow := false) {
 		.{0, 0, 0, 255}
 	);
 }
-
-ui_begin :: () {
-	W_new, H_new := GetScreenWidth(), GetScreenHeight();
-	if W_new != W || H_new != H {
-		W, H = W_new, H_new;
-		UnloadRenderTexture(ui_buffer);
-		ui_buffer = LoadRenderTexture(W, H);
-	}
-
-	mouse_pos = GetMousePosition();
-	release_on_this_frame = IsMouseButtonReleased(.LEFT);
-	press_on_this_frame = IsMouseButtonPressed(.LEFT);
-	assert(!release_on_this_frame || !press_on_this_frame);
-
-	BeginTextureMode(ui_buffer);
-	ClearBackground(BLANK);
-}
-ui_end :: () {
-	if release_on_this_frame {
-		btn_pressed_on_tag = "";
-	}
-	EndTextureMode();
-}
-ui_draw_buffer :: () {
-	DrawTexturePro(
-		ui_buffer.texture, 
-		.{0, xx H, xx W, xx-H},
-		.{0, 0, xx W, xx H},
-		.{0, 0}, 0, WHITE
-	);	
-}
-
-btn_pressed_on_tag : string;
-ui_button :: (rect : Rectangle, tag : string) -> bool {
-	result := false;
-	if press_on_this_frame {
-		if CheckCollisionPointRec(mouse_pos, rect) {
-			btn_pressed_on_tag = tag;
-		}
-	} else if release_on_this_frame {
-		if btn_pressed_on_tag == tag && CheckCollisionPointRec(mouse_pos, rect) {
-			result = true;
-		}
-	}
-
-	ui_draw_text_block(rect, tag, shadow = tag == btn_pressed_on_tag);
-	return result;
-}
-
-#scope_file
-mouse_pos : Vector2;
-release_on_this_frame : bool;
-press_on_this_frame : bool;
-
-ui_buffer : RenderTexture2D;
-ui_font : Font;
-
-W, H : s32;
