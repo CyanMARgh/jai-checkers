@@ -14,154 +14,118 @@
 #load "rl/ui.jai";
 // #load "networking.jai";
 
-AUTO_PLAY :: false;
-SINGLE_CAM :: true;
-cam_mode :: Cam_Mode.WITH_RAIL;
-
-_main :: () {
-	defer report_memory_leaks();
-	init_window_and_resources(); defer deinit_window_and_resources();
-
-	// buffer := LoadRenderTexture(GetScreenWidth(), GetScreenHeight());
-	ui_init(); defer ui_deinit();
-
-
-	while !WindowShouldClose() {
-		W, H := GetScreenWidth(), GetScreenHeight();
-		ui_begin();
-			if ui_button(.{0, 0, 200, 40}, "button 0") {
-				print("click(0)!\n");
-			}
-			if ui_button(.{0, 40, 200, 40}, "button 1") {
-				print("click(1)!\n");
-			}
-		ui_end();
-	
-		BeginDrawing();
-			ClearBackground(WHITE);
-			ui_draw_buffer();
-		EndDrawing();
-	}
-}
+play_game := false;
+BOARDS_COUNT :: 5;
 
 main :: () {
 	defer report_memory_leaks();
 	init_window_and_resources(); defer deinit_window_and_resources();
 
-	using game_scene := Game_Scene.{
-		board = .{
-			rules = .{
-				must_capture = true,
-				diagonal = false,
-				leveled_upgrade = true,
-				rows_offset = 1,
-				rows = 1,
-				diam = 8,
-				cutoff = 2,
-				enable_border = true,
-				border_period = 16,
-				must_continue_capture = true,
-				// two_players = false,
-				land_right_behind = false,
-				// _180_no_scope = true
+
+	game_scenes : [BOARDS_COUNT * BOARDS_COUNT]Game_Scene;
+	for * game_scenes {
+		it.* = .{
+			board = .{
+				rules = .{
+					must_capture = true,
+					diagonal = false,
+					leveled_upgrade = true,
+					rows_offset = 1,
+					rows = 2,
+					diam = 12,
+					cutoff = 3,
+					enable_border = true,
+					border_period = 40,
+					must_continue_capture = true,
+					// two_players = false,
+					land_right_behind = false,
+					// _180_no_scope = true
+				}
+			},
+			immediate_switch = true
+		};
+		init_main_scene(it);
+	}
+	defer {
+		for * game_scenes  deinit_main_scene(it);
+	}
+
+	_camera = default_camera(game_scenes[0], 0);
+	{
+		i := 0;
+		for y : 0..BOARDS_COUNT-1 {
+			for x : 0..BOARDS_COUNT-1 {
+				game_scenes[i].toatal_translation = .{
+					CELL_SIZE * (game_scenes[0].board.diam + 1) * x,
+					0,
+					CELL_SIZE * (game_scenes[0].board.diam + 1) * y
+				};
+				i += 1;
 			}
-		},
-		immediate_switch = SINGLE_CAM || cam_mode == .NO_RAIL
-	};
-	init_main_scene(*game_scene); defer deinit_main_scene(*game_scene);
-	init_cameras(game_scene);
+		}
+	}
 
 	while !WindowShouldClose() {
+		if IsWindowFullscreen() {
+			SetWindowSize(1920, 1080);
+		} else {
+		 	ToggleFullscreen();
+		}
+
 		delta_time, time :float= xx min(GetFrameTime(), 1), xx GetTime();
+		// delta_time *= .4;
+		// time *= .4;
+		if IsKeyPressed(.P) play_game ^= true;
+		process_input_camera(game_scenes[0]);
 
-		#if AUTO_PLAY {
-			if board_interface.uncommited_count == 0 {
-				random_click(*board_interface);
+		if play_game {
+			for * game_scenes {
+				if it.board_interface.uncommited_count == 0 {
+					random_click(*(it.board_interface));
+				}
+				if at(it.board_interface.board, it.board_interface.cursor) & .BORDER {
+					it.board_interface.cursor = .{-1, -1};
+				}
 			}
-			if at(board_interface.board, board_interface.cursor) & .BORDER {
-				board_interface.cursor = .{-1, -1};
-			}			
+
+			//process incoming messages
+			for * game_scenes {
+				simulate(it, delta_time);
+			}
+			simulate(*particle_system, delta_time);
 		}
 
-		#if !AUTO_PLAY {
-			process_input_camera(game_scene);
-		}
-		camera, clickable := get_current_view_camera(game_scene, cam_mode, time);
-		#if !AUTO_PLAY {
-			process_input(*game_scene, camera, clickable);
-		}
-		//process incoming messages
-		simulate(*game_scene, delta_time);
-		simulate(*particle_system, delta_time);
 		BeginDrawing();
-			draw_scene(game_scene, camera, time);
-			BeginMode3D(camera);
+			ClearBackground(GRAY);
+			for game_scenes {
+				draw_scene(it, _camera, time,
+					// ifx it_index == BOARDS_COUNT * BOARDS_COUNT - 1 then .DEBUG_INFO else
+					.MINIMUM
+				);
+			}
+
+			BeginMode3D(_camera);
 				draw(*particle_system);
 			EndMode3D();
 		EndDrawing();
-
 		update_audio();
 		reset_temporary_storage();
 	}
 }
 
 #scope_file
-#if SINGLE_CAM {
-	_camera : Camera;
-	_player : int; 
-} else {
-	_camera_backups : [5]Camera;
-}
+_camera : Camera;
 
 _cam_state : enum u8 {
 	FIXED;
 	MOVE;
 } = .FIXED;
-Cam_Mode :: enum u8 {WITH_RAIL; NO_RAIL; DEMO;}
 
-get_current_view_camera :: (using game_scene : Game_Scene, mode : Cam_Mode, time : float) -> Camera, clickable:bool {
-	if mode == .DEMO {
-		vv := Vector3.{sin(time * .2), 0, cos(time * .2)};
-		return .{
-			(vv + .{0, 1, 0}) * (CELL_SIZE * board.diam),
-			(vv * .1 + .{0, 0, 0}) * (CELL_SIZE * board.diam),
-			.{0, 1, 0}, 45, 0
-		}, false;
-	}
-	#if SINGLE_CAM {
-		return _camera, _cam_state == .FIXED;
-	} else {
-		cam_a := _camera_backups[game_scene.board.current_player];
-		if mode == .NO_RAIL || current_step.type != .STEPEND {
-			return cam_a, _cam_state == .FIXED;
-		}
-		cam_b := _camera_backups[current_step.data_stepend.player_new];
-		return interpolate_cams(cam_a, cam_b, animation_time), _cam_state == .FIXED;
-	}
-}
 process_input_camera :: (using game_scene : Game_Scene) {
-	clamp :: (v : Vector3, a : Vector3, b : Vector3) -> Vector3 {
-		return .{
-			clamp(v.x, a.x, b.x),
-			clamp(v.y, a.y, b.y),
-			clamp(v.z, a.z, b.z)
-		};
-	}
-
-	#if SINGLE_CAM {
-		camera := *_camera;
-	} else {
-		camera := *(_camera_backups[board.current_player]);
-	}
+	camera := *_camera;
 	if _cam_state == {
 		case .MOVE;
-		if current_step.type == .STEPEND return;
-
-		bounds := get_camera_bounds(game_scene);
 		update_camera_free_move(camera, 1.);
-		clamped_position := clamp(camera.position, bounds.min, bounds.max);
-		camera.target += clamped_position - camera.position;
-		camera.position = clamped_position;
 		if IsMouseButtonPressed(.LEFT) || IsMouseButtonPressed(.RIGHT) {
 			_cam_state = .FIXED;
 			center := GetWindowPosition() + Vector2.{600, 400};
@@ -174,9 +138,7 @@ process_input_camera :: (using game_scene : Game_Scene) {
 			DisableCursor();
 		}
 	}
-	if IsKeyPressed(.R) {
-		reset_this_camera(game_scene);
-	}
+	if IsKeyPressed(.R) then _camera = default_camera(game_scene, 0);
 }
 default_camera :: (using game_scene : Game_Scene, id : int) -> Camera {
 	VV :: Vector3.[.{1, 0, 0}, .{0, 0, 1}, .{-1, 0, 0}, .{0, 0, -1}, .{0.01, 1, 0}];
@@ -185,23 +147,6 @@ default_camera :: (using game_scene : Game_Scene, id : int) -> Camera {
 		(VV[id] * .1 + .{0, 0, 0}) * (CELL_SIZE * board.diam),
 		.{0, 1, 0}, 45, 0
 	};
-}
-init_cameras :: (using game_scene : Game_Scene) { 
-	#if SINGLE_CAM {
-		_camera = default_camera(game_scene, _player);		
-	} else {
-		for 0..4 {
-			_camera_backups[it] = default_camera(game_scene, it);
-		}		
-	}
-}
-
-reset_this_camera :: (using game_scene : Game_Scene) {
-	#if SINGLE_CAM {
-		_camera = default_camera(game_scene, _player);
-	} else {
-		_camera_backups[board.current_player] = default_camera(game_scene, board.current_player);
-	}
 }
 interpolate_cams :: (cam_a : Camera, cam_b : Camera, t : float) -> Camera {
 	to_local_direction :: (d0 : Vector3, d1 : Vector3) -> Vector3 {

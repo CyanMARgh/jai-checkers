@@ -36,6 +36,8 @@ Game_Scene :: struct {
 		caption_angle := 90.;
 
 		immediate_switch := false;
+
+		toatal_translation := Vector3.{0, 0, 0};
 	};
 }
 init_main_scene :: (using game_scene : *Game_Scene) {
@@ -47,7 +49,6 @@ deinit_main_scene :: (using game_scene : *Game_Scene) {
 simulate :: (using game_scene : *Game_Scene, delta_time : float) {
 	background = background * (1 - delta_time) + BACKGROUND_COLORS[board.current_player] * delta_time;
 	process_unapplied_steps(game_scene, delta_time);
-	simulate(*particle_system, delta_time);
 }
 process_input :: (using game_scene : *Game_Scene, camera : Camera, cursor_enabled : bool) {
 	board_interface.cursor = .{-1, -1};
@@ -78,6 +79,7 @@ process_input :: (using game_scene : *Game_Scene, camera : Camera, cursor_enable
 }
 find_intersection :: (using game_scene : *Game_Scene, camera : Camera) {
 	ray := GetMouseRay(GetMousePosition(), camera);
+	ray.position -= toatal_translation;
 	S := Vector3.{xx board.diam * CELL_SIZE, CELL_HEIGHT, xx board.diam * CELL_SIZE};
 	c0 := GetRayCollisionBox(ray, .{-.5 * S, .5 * S});
 
@@ -120,10 +122,10 @@ process_unapplied_steps :: (using game_scene : *Game_Scene, delta_time : float) 
 			case .UPGRADE; using current_step.data_upgrade;
 			point := to_vec3(board, pos) + .{0, CELL_HEIGHT / 2, 0};
 			diff := aft & ~bef;
-			if diff & .KING_RED emit(*particle_system, point, base_color = RED);
-			if diff & .KING_BLUE emit(*particle_system, point, base_color = BLUE);
-			if diff & .KING_BLACK emit(*particle_system, point, base_color = BLACK);
-			if diff & .KING_GREEN emit(*particle_system, point, base_color = GREEN);
+			if diff & .KING_RED emit(*particle_system, toatal_translation + point, base_color = RED);
+			if diff & .KING_BLUE emit(*particle_system, toatal_translation + point, base_color = BLUE);
+			if diff & .KING_BLACK emit(*particle_system, toatal_translation + point, base_color = BLACK);
+			if diff & .KING_GREEN emit(*particle_system, toatal_translation + point, base_color = GREEN);
 			play(*sg_upgrade);
 			case .MOVE;
 			play(*sg_slide);
@@ -202,7 +204,21 @@ to_vec3 :: (using board : Board, cell_coord : ivec2) -> Vector3 {
 	return (Vector3.{xx cell_coord.x, 0, xx cell_coord.y} - Vector3.{xx(diam - 1), 0, xx(diam - 1)} * .5) * CELL_SIZE;
 }
 
-draw_scene :: (using game_scene : Game_Scene, camera : Camera, time : float) {
+Draw_Parts :: enum_flags u16 {
+	MINIMUM			:: 0x0000;
+
+	HINTS 			:: 0x0001;
+	CAPTIONS		:: 0x0002;
+	BACKGROUND		:: 0x0004;
+	ROSE			:: 0x0008;
+	DEBUG_INFO		:: 0x0010;
+	RAY_COLLISION	:: 0x0020;
+	CURSOR			:: 0x0040;
+
+	ALL				:: 0xFFFF;
+}
+
+draw_scene :: (using game_scene : Game_Scene, camera : Camera, time : float, parts := Draw_Parts.ALL) {
 	draw_figure :: (cell : Cell, pos : Vector3, using game_scene : Game_Scene) {
 		y_offset := 0.;
 		draw_layer :: (pos: Vector3, color : Color, using game_scene : Game_Scene) #expand {
@@ -257,11 +273,11 @@ draw_scene :: (using game_scene : Game_Scene, camera : Camera, time : float) {
 		}
 		return cell_color;
 	}
-	draw_cursor_selection_and_collision :: (using game_scene : Game_Scene) {
+	draw_cursor_selection_and_collision :: (using game_scene : Game_Scene, parts : Draw_Parts) {
 		cursor := board_interface.cursor;
-		if cursor != .{-1, -1} then {
+		if cursor != .{-1, -1} && parts & .CURSOR then {
 			// assert(cursor_collision.hit);
-			#if DEBUG {
+			#if DEBUG if parts & .RAY_COLLISION {
 				p1 := cursor_collision.point;
 				p2 := p1 + .2 * cursor_collision.normal;
 				DrawCube(p1, .05, .05, .05, SKYBLUE);
@@ -341,9 +357,11 @@ draw_scene :: (using game_scene : Game_Scene, camera : Camera, time : float) {
 		draw_text_cell(game_scene, at, src, caption_angle, BLACK);
 	}
 
-	BeginDrawing(); defer EndDrawing();
-	ClearBackground(.{xx background.x, xx background.y, xx background.z, 255});
+	if parts & .BACKGROUND {
+		ClearBackground(.{xx background.x, xx background.y, xx background.z, 255});
+	}
 	BeginMode3D(camera);
+	PushMatrix(); Translatef(toatal_translation.x, toatal_translation.y, toatal_translation.z);
 		using board;
 		i := 0;
 		for y : 0..diam-1 {
@@ -368,7 +386,7 @@ draw_scene :: (using game_scene : Game_Scene, camera : Camera, time : float) {
 			}
 		}
 		if current_step.type == .NONE {
-			if SHOW_POSSIBLE_STEPS {
+			if SHOW_POSSIBLE_STEPS && (parts & .HINTS) {
 				for board_interface.shown_steps_capture {
 					draw_step_option(game_scene, it, .{255, 0, 0, 100});
 				} 
@@ -376,7 +394,7 @@ draw_scene :: (using game_scene : Game_Scene, camera : Camera, time : float) {
 					draw_step_option(game_scene, it, .{0, 255, 0, 100});
 				}
 			}
-			if SHOW_CLICKABLE_FIGURES {
+			if SHOW_CLICKABLE_FIGURES && (parts & .HINTS) {
 				figure_flag :Cell= xx(1 << current_player);
 				for board_interface.clickable_figures_capture {
 					if at(board, it) & figure_flag {
@@ -392,12 +410,11 @@ draw_scene :: (using game_scene : Game_Scene, camera : Camera, time : float) {
 		}
 
 		draw_animation(game_scene, time);
-		draw(*particle_system);
 		// DrawGrid(xx diam, CELL_SIZE);
 		if current_step.type == .NONE {
-			draw_cursor_selection_and_collision(game_scene);
+			draw_cursor_selection_and_collision(game_scene, parts);
 		}
-		{
+		if parts & .CAPTIONS {
 			for i : 0..diam-1 {
 				draw_text_cell(.{xx diam, xx i}, false);
 				draw_text_cell(.{-1, xx i}, false);
@@ -405,9 +422,10 @@ draw_scene :: (using game_scene : Game_Scene, camera : Camera, time : float) {
 				draw_text_cell(.{xx i, -1}, true);
 			}
 		}
+	PopMatrix();
 	EndMode3D();
 
-	{
+	if parts & .ROSE {
 		ss := Vector2.{xx GetScreenWidth(), xx GetScreenHeight()};
 		rs := ss.y * .25;
 		yaw, pitch, r := to_yaw_pitch_r(camera.target - camera.position);
@@ -422,7 +440,7 @@ draw_scene :: (using game_scene : Game_Scene, camera : Camera, time : float) {
 	// DrawText("W", 0, 0, 100, MAGENTA);
 	// DrawTextCodepoint(font, #char"W", .{0, 0}, 100, MAGENTA);
 
-	#if DEBUG {
+	#if DEBUG if parts & .DEBUG_INFO  {
 		DrawFPS(20, 20);
 		DrawText(temp_c_string(tprint(
 				"step = %\ntime = %\nuncommited = %\ncursor = %\ncycle_id = %\nalive_count = %\nplayer = %\n",

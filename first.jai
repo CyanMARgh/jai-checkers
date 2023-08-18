@@ -30,7 +30,7 @@ IMPORT_EXTRA_PATH :: "/home/cyanmargh/projects/jai/";
 	#run assert(false, "invalid OS");
 }
 
-build :: (outfit : enum u8 {KSCURSES; SIMP; RAYLIB;}) {
+build :: (outfit : enum u8 {KSCURSES; SIMP; RAYLIB; RAYLIB_MATRIX;}) {
 	w := compiler_create_workspace();
 	if !w {
 		print("Workspace createion failed!\n");
@@ -42,6 +42,7 @@ build :: (outfit : enum u8 {KSCURSES; SIMP; RAYLIB;}) {
 		case .KSCURSES; outfit_suffix = "ks";
 		case .RAYLIB; outfit_suffix = "rl";
 		case .SIMP; outfit_suffix = "simp";
+		case .RAYLIB_MATRIX; outfit_suffix = "rl_matrix";
 	}
 	
 	executable_name := sprint("checkers_%1%2%3", 
