@@ -1,5 +1,5 @@
 DEBUG :: true;
-IMPORT_EXTRA_PATH :: "/home/cyanmargh/projects/jai/";
+IMPORT_EXTRA_PATH :: "/home/vlad2305m/Applications/jai/projects/";
 
 #import "Basic";
 #import "Compiler";

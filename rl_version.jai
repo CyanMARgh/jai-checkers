@@ -18,7 +18,7 @@ AUTO_PLAY :: false;
 SINGLE_CAM :: true;
 cam_mode :: Cam_Mode.WITH_RAIL;
 
-main :: () {
+_main :: () {
 	defer report_memory_leaks();
 	init_window_and_resources(); defer deinit_window_and_resources();
 
@@ -51,7 +51,7 @@ main :: () {
 	}
 }
 
-_main :: () {
+main :: () {
 	defer report_memory_leaks();
 	init_window_and_resources(); defer deinit_window_and_resources();
 

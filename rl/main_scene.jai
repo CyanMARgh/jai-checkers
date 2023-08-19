@@ -135,14 +135,15 @@ process_unapplied_steps :: (using game_scene : *Game_Scene, delta_time : float) 
 			case .STEPEND; using current_step.data_stepend;
 		}
 	}
+    ANIMATION_SPEED :: 5;
 	update_animation :: (using game_scene : *Game_Scene, delta_time : float) -> current_animation_ended:bool {
 		if current_step.type == {
 			case .NONE;
 			return false;
 			case .MOVE;
-			animation_time += 5 * delta_time;
+			animation_time += ANIMATION_SPEED * delta_time;
 			case .CAPTURE;
-			animation_time += 5 * delta_time;
+			animation_time += ANIMATION_SPEED * delta_time;
 			case .BORDER;
 			animation_time += 5 * delta_time;
 			case .STEPEND; using current_step.data_stepend;
@@ -219,11 +220,11 @@ Draw_Parts :: enum_flags u16 {
 }
 
 draw_scene :: (using game_scene : Game_Scene, camera : Camera, time : float, parts := Draw_Parts.ALL) {
-	draw_figure :: (cell : Cell, pos : Vector3, using game_scene : Game_Scene) {
+	draw_figure :: (cell : Cell, pos : Vector3, using game_scene : Game_Scene, size : float = 1) {
 		y_offset := 0.;
 		draw_layer :: (pos: Vector3, color : Color, using game_scene : Game_Scene) #expand {
-			DrawModel(model_cylinder, pos + Vector3.{0, CELL_HEIGHT / 2 + y_offset, 0}, 1, color);
-			`y_offset += FIGURE_HEIGHT;
+			DrawModel(model_cylinder, pos + Vector3.{0, CELL_HEIGHT / 2 + y_offset, 0}, size, color);
+			`y_offset += FIGURE_HEIGHT * size;
 		}
 		if board.leveled_upgrade {
 			if cell & .KING_BLACK then draw_layer(pos, BLACK, game_scene);
@@ -233,8 +234,8 @@ draw_scene :: (using game_scene : Game_Scene, camera : Camera, time : float, par
 		}
 		DrawModel(
 			model_cylinder,
-			pos + Vector3.{0, CELL_HEIGHT / 2 + y_offset + FIGURE_HEIGHT * (1 - FIGURE_INNER_CIRCLE_RATIO) + .01, 0},
-			FIGURE_INNER_CIRCLE_RATIO,
+			pos + Vector3.{0, y_offset + CELL_HEIGHT / 2 + (FIGURE_HEIGHT * (1 - FIGURE_INNER_CIRCLE_RATIO) + .01) * size, 0},
+			FIGURE_INNER_CIRCLE_RATIO * size,
 			ifx !board.leveled_upgrade && (cell & .KING_ANY) then .{255, 255, 100, 255} else WHITE		
 		);
 		type := cell & .FIGURE_TYPE;
@@ -293,8 +294,12 @@ draw_scene :: (using game_scene : Game_Scene, camera : Camera, time : float, par
 	draw_mooving_figure :: (cell : Cell, from : ivec2, to : ivec2, t : float, using game_scene : Game_Scene) {
 		p1, p2 := to_vec3(*board, from), to_vec3(board, to);
 		pos := lerp(p1, p2, t);
-		draw_figure(at(*board, from), pos, game_scene);
+		draw_figure(at(*board, from), pos, game_scene, 1.1);
 	}
+    draw_shrinking_figure :: (cell : Cell, pos : ivec2, t : float, using game_scene : Game_Scene) {
+        draw_figure(cell, to_vec3(board, pos), game_scene, 1-t);
+    }
+
 	draw_animation :: (using game_scene : Game_Scene, time : float) {
 		if current_step.type == {
 			case .MOVE; using current_step.data_move;
@@ -305,10 +310,13 @@ draw_scene :: (using game_scene : Game_Scene, camera : Camera, time : float, par
 			draw_mooving_figure(at(*board, from), from, to, t, game_scene);
 			delta := to - from;
 			L := abs(delta.x) + abs(delta.y);
-			if t < 1. - cast(float)over / L {
-				killed_pos := to - dir * over;
+            killed_pos := to - dir * over;
+            t_over := 1. - cast(float)over / L;
+			if t <= t_over {
 				draw_figure(at(board, killed_pos), to_vec3(board, killed_pos), game_scene);
-			}
+			} else {
+                draw_shrinking_figure(at(board, killed_pos), killed_pos, (t-t_over)/(1-t_over), game_scene);
+            }
 			case .BORDER; using current_step.data_border;
 			pos_3 := to_vec3(*board, pos);
 			cell := at(*board, pos);
@@ -380,7 +388,7 @@ draw_scene :: (using game_scene : Game_Scene, camera : Camera, time : float, par
 				}
 				if (cell & .FIGURE) {
 					if !my_array_find(banned_figure_coords, cell_coord) {
-						draw_figure(cell, pos, game_scene);
+						draw_figure(cell, pos, game_scene, ifx cell_coord == board_interface.selected then 1.05 else 1);
 					}
 				}
 			}
