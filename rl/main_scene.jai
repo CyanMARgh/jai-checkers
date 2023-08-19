@@ -16,8 +16,8 @@ using visual_properties : struct {
 
 	SHINING_BORDERS :: true;
 	COLOR_ZONES :: true;
-	SHOW_CLICKABLE_FIGURES :: true;
-	SHOW_POSSIBLE_STEPS :: true;
+	SHOW_CLICKABLE_FIGURES :: true && !AUTO_PLAY;
+	SHOW_POSSIBLE_STEPS :: true && !AUTO_PLAY;
 }
 Game_Scene :: struct {
 	board : Board; 
@@ -90,7 +90,8 @@ find_intersection :: (using game_scene : *Game_Scene, camera : Camera) {
 			pos := to_vec3(*board, cell_coord);
 			if cell & .FIGURE {
 				level := cell_level(cell);
-				c1 := GetRayCollisionCylinder(ray, pos, pos + Vector3.{0, CELL_HEIGHT / 2 + FIGURE_HEIGHT * (1 + level), 0}, FIGURE_RADIUS);
+                size := ifx cell_coord == board_interface.selected then SELECTED_PIECE_SIZE else 1;
+				c1 := GetRayCollisionCylinder(ray, pos, pos + Vector3.{0, CELL_HEIGHT / 2 + FIGURE_HEIGHT * (1 + level), 0} * size, FIGURE_RADIUS * size);
 				if c1.hit && c1.distance < c0.distance {
 					c0 = c1;
 				}
@@ -135,7 +136,7 @@ process_unapplied_steps :: (using game_scene : *Game_Scene, delta_time : float) 
 			case .STEPEND; using current_step.data_stepend;
 		}
 	}
-    ANIMATION_SPEED :: 5;
+    ANIMATION_SPEED :: 4;
 	update_animation :: (using game_scene : *Game_Scene, delta_time : float) -> current_animation_ended:bool {
 		if current_step.type == {
 			case .NONE;
@@ -219,6 +220,7 @@ Draw_Parts :: enum_flags u16 {
 	ALL				:: 0xFFFF;
 }
 
+SELECTED_PIECE_SIZE :: 1.05;
 draw_scene :: (using game_scene : Game_Scene, camera : Camera, time : float, parts := Draw_Parts.ALL) {
 	draw_figure :: (cell : Cell, pos : Vector3, using game_scene : Game_Scene, size : float = 1) {
 		y_offset := 0.;
@@ -294,7 +296,14 @@ draw_scene :: (using game_scene : Game_Scene, camera : Camera, time : float, par
 	draw_mooving_figure :: (cell : Cell, from : ivec2, to : ivec2, t : float, using game_scene : Game_Scene) {
 		p1, p2 := to_vec3(*board, from), to_vec3(board, to);
 		pos := lerp(p1, p2, t);
-		draw_figure(at(*board, from), pos, game_scene, 1.1);
+        size := 1.1; 
+        dp := to-from; distance := dp.x+dp.y; if distance < 0 then distance = -distance; 
+        if distance > 0 {
+            t_edge := .25/distance;
+            if t > 1 - t_edge then size = lerp(size, 1, (t + t_edge - 1)/t_edge);
+            else if t < t_edge then size = lerp(SELECTED_PIECE_SIZE, size, t/t_edge);
+        }
+		draw_figure(at(*board, from), pos, game_scene, size);
 	}
     draw_shrinking_figure :: (cell : Cell, pos : ivec2, t : float, using game_scene : Game_Scene) {
         draw_figure(cell, to_vec3(board, pos), game_scene, 1-t);
@@ -388,7 +397,7 @@ draw_scene :: (using game_scene : Game_Scene, camera : Camera, time : float, par
 				}
 				if (cell & .FIGURE) {
 					if !my_array_find(banned_figure_coords, cell_coord) {
-						draw_figure(cell, pos, game_scene, ifx cell_coord == board_interface.selected then 1.05 else 1);
+						draw_figure(cell, pos, game_scene, ifx cell_coord == board_interface.selected then SELECTED_PIECE_SIZE else 1);
 					}
 				}
 			}
