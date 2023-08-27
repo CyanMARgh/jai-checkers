@@ -60,7 +60,7 @@ main :: () {
 			rules = .{
 				must_capture = true,
 				diagonal = false,
-				leveled_upgrade = true,
+				leveled_upgrade = false,
 				rows_offset = 1,
 				rows = 1,
 				diam = 8,

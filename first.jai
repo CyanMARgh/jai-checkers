@@ -1,5 +1,5 @@
 DEBUG :: true;
-IMPORT_EXTRA_PATH :: "/home/vlad2305m/Applications/jai/projects/";
+IMPORT_EXTRA_PATH :: "/home/cyanmargh/projects/jai/";
 
 #import "Basic";
 #import "Compiler";
@@ -19,7 +19,7 @@ IMPORT_EXTRA_PATH :: "/home/vlad2305m/Applications/jai/projects/";
 
 #run {
 	set_build_options_dc(.{do_output=false});
-	build(.RAYLIB);
+	build(.RAYLIB_MATRIX);
 }
 
 #if OS == .LINUX {

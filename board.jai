@@ -282,10 +282,15 @@ get_player_by_code :: (cell : Cell) -> int {
 	assert(false);
 	return 5;
 }
-upgrade :: (c : Cell) -> Cell {
-	c2 := c | (((c & .BOOSTS) >> 4) & ~((c & .FIGURE_TYPE) << 4));
+upgrade :: (c : Cell, using rules : Rules) -> Cell {
+	self_ban := ~((c & .FIGURE_TYPE) << 4);
+	if leveled_upgrade {
+		return (c | ((c & .BOOSTS) >> 4)) & self_ban;
+	} else {
+		upgrade_mask := ifx c & .BOOSTS & ~((c & .FIGURE_TYPE) << 8) then Cell.KING_ANY else 0;
+		return (c | upgrade_mask) & self_ban;
+	}
 	// if c2 != c log("c = %, c2 = %\n", c, c2);
-	return c2;
 }
 gen_step_move :: (using board : Board, from : ivec2, to : ivec2) -> Step {
 	return .{type = .MOVE, data_move = .{from = from, to = to}};
@@ -297,7 +302,7 @@ gen_step_capture :: (using board : Board, from : ivec2, to : ivec2, dir : ivec2,
 }
 gen_step_upgrade :: (using board : Board, pos : ivec2) -> Step {
 	c := at(board, pos);
-	c_aft := upgrade(c);
+	c_aft := upgrade(c, rules);
 	return .{type = ifx c == c_aft then .NONE else .UPGRADE, data_upgrade = .{pos = pos, bef = c, aft = c_aft}};
 }
 

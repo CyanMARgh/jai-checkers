@@ -14,6 +14,7 @@
 #load "rl/ui.jai";
 // #load "networking.jai";
 
+AUTO_PLAY :: true;
 play_game := false;
 BOARDS_COUNT :: 5;
 
