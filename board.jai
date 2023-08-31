@@ -162,14 +162,14 @@ init :: (using board : *Board) {
 				if x == diam-1 then cell = .BOOST_BLACK;
 				if x == 0 then cell = .BOOST_RED;
 
-				if (!diagonal || (x % y) % 2 == 0) {
+				if (!diagonal || (x + y) % 2 == 0) {
 					if x >= rows_offset && x < rows + rows_offset {
 						cell |= .RED;
 						alive_count[2] += 1;
 					} else if x < diam - rows_offset && x >= diam - rows - rows_offset {
 						cell |= .BLACK;
 						alive_count[0] += 1;
-					}					
+					}
 				}
 
 				cells[i] = cell;

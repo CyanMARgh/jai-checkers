@@ -21,9 +21,6 @@ ui_begin :: () {
 	assert(!release_on_this_frame || !press_on_this_frame);
 
 	input_key, input_char = GetKeyPressed(), GetCharPressed();
-	if input_key || input_char {
-		print("%, %\n", input_key, input_char);
-	}
 
 	BeginTextureMode(ui_buffer);
 	ClearBackground(BLANK);
@@ -50,10 +47,21 @@ ui_draw_buffer :: () {
 }
 
 ui_button :: (_rect : Rectangle, tag : string) -> bool {
+	return ui_button(_rect, tag, tag);
+}
+ui_button :: (_rect : Rectangle, tag : string, text : string) -> bool {
 	rect := add_offset(_rect, UI_GAP_WIDTH);
 	result := ui_click(rect, tag, false);
-	ui_draw_text_block(rect, tag, shadow = down_tag == tag);
+	ui_draw_text_block(rect, text, shadow = down_tag == tag);
 	return result;
+}
+ui_checkbox :: (_rect : Rectangle, tag : string, enabled : *bool) {
+	rect := add_offset(_rect, UI_GAP_WIDTH);
+	inner := ui_draw_base(rect, down_tag == tag);
+	enabled.* ^= ui_click(rect, tag, false);
+	if enabled.* {
+		DrawRectangleRec(add_offset(inner, UI_BORDER_WIDTH), BLACK);
+	}
 }
 
 is_printable :: (char : KeyboardKey) -> bool {
@@ -61,7 +69,7 @@ is_printable :: (char : KeyboardKey) -> bool {
 	return code >= 32 && code <= 126;
 }
 
-ui_text_input :: (_rect : Rectangle, buffer : *[..]u8, tag : string) {
+ui_text_input :: (_rect : Rectangle, tag : string, buffer : *[..]u8) {
 	rect := add_offset(_rect, UI_GAP_WIDTH);
 	add_char :: (buffer : *[..]u8, char : s32) {
 		while char {
@@ -83,6 +91,60 @@ ui_text_input :: (_rect : Rectangle, buffer : *[..]u8, tag : string) {
 	ui_draw_text_block(rect, to_string(buffer.*), shadow = tag == focus_tag);
 }
 
+ui_text :: (_rect : Rectangle, text : string) {
+	rect := add_offset(_rect, UI_GAP_WIDTH);
+	ui_draw_text_block(rect, text);
+}
+ui_range_selector :: (rect : Rectangle, tag : string, value : *$T, minval : T, maxval : T) {
+	return ui_range_selector(rect, tag, value, minval, maxval, tag);
+}
+ui_range_selector :: (rect : Rectangle, tag : string, value : *$T, minval : T, maxval : T, text : string) {
+	#run {
+		type := type_info(T).type;
+		assert(type == .INTEGER, tprint("type =%\n", type));
+	}
+	percents_count := 0;
+	{
+		for i : 0..text.count-1 if text[i] == #char"%" then percents_count += 1;
+		assert(percents_count <= 1);
+	}
+	assert(rect.width > rect.height * 2);
+	rect_left := Rectangle.{
+		rect.x, rect.y,
+		rect.height, rect.height
+	};
+	rect_center := Rectangle.{
+		rect.x + rect.height, rect.y,
+		rect.width - 2 * rect.height, rect.height
+	};
+	rect_right := Rectangle.{
+		rect.width + rect.x - rect.height, rect.y,
+		rect.height, rect.height
+	};
+	if ui_button(rect_left, tprint("%.0", tag), "<") && value.* > minval {
+		value.* -= 1;
+	}
+	if ui_button(rect_right, tprint("%.1", tag), ">") && value.* < maxval {
+		value.* += 1;
+	}
+	ui_text(rect_center, ifx percents_count == 0 then text else tprint(text, value.*));
+}
+ui_checkbox_with_text :: (rect : Rectangle, tag : string, enabled : *bool) {
+	ui_checkbox_with_text(rect, tag, enabled, tag);
+}
+ui_checkbox_with_text :: (rect : Rectangle, tag : string, enabled : *bool, text : string) {
+	rect_left := Rectangle.{
+		rect.x, rect.y,
+		rect.height, rect.height
+	};
+	rect_right := Rectangle.{
+		rect.x + rect.height, rect.y,
+		rect.width - rect.height, rect.height
+	};
+	ui_checkbox(rect_left, tprint("%.0", tag), enabled);
+	ui_text(rect_right, text);
+}
+
 is_ui_focused :: () -> bool {
 	return focus_tag != "";
 }
@@ -94,7 +156,6 @@ pressed_tag : string;
 down_tag : string;
 released_tag : string;
 focus_tag : string;
-
 
 mouse_pos : Vector2;
 release_on_this_frame : bool;

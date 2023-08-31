@@ -19,7 +19,7 @@ IMPORT_EXTRA_PATH :: "/home/cyanmargh/projects/jai/";
 
 #run {
 	set_build_options_dc(.{do_output=false});
-	build(.RAYLIB_MATRIX);
+	build(.RAYLIB);
 }
 
 #if OS == .LINUX {
@@ -60,7 +60,7 @@ build :: (outfit : enum u8 {KSCURSES; SIMP; RAYLIB; RAYLIB_MATRIX;}) {
 			stack_trace = false;
 			array_bounds_check = .OFF;
 			cast_bounds_check = .OFF;
-			math_bounds_check = .OFF;
+			// math_bounds_check = .OFF;
 			null_pointer_check = .OFF;
 			dead_code_elimination = .ALL;
 			backtrace_on_crash = .OFF;

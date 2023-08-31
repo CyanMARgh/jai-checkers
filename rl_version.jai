@@ -15,7 +15,7 @@
 // #load "networking.jai";
 
 AUTO_PLAY :: false;
-SINGLE_CAM :: true;
+SINGLE_CAM :: false;
 cam_mode :: Cam_Mode.WITH_RAIL;
 
 _main :: () {
@@ -27,26 +27,22 @@ _main :: () {
 
 	input_text : [..]u8; defer array_free(input_text);
 
+	huh : bool;
+	value := 10;
+
 	while !WindowShouldClose() {
 		W, H := GetScreenWidth(), GetScreenHeight();
-		// if key != .NULL || char != .NULL {
-		// 	print("%, %\n", key, char);
-		// }
 		ui_begin();
-			if ui_button(.{0, 0, 200, 40}, "button 0") {
-				print("click(0)!\n");
-			}
-			if ui_button(.{0, 40, 200, 40}, "button 1") {
-				print("click(1)!\n");
-			}
-			ui_text_input(.{0, 80, 300, 40}, *input_text, "input text");
+			if ui_button(.{0, 0, 200, 40}, "button 0") print("click(0)!\n");
+			if ui_button(.{0, 40, 200, 40}, "button 1") print("click(1)!\n");
+			ui_text_input(.{0, 80, 300, 40}, "input text", *input_text);
+			ui_checkbox_with_text(.{0, 120, 300, 40}, "huh", *huh);
+			ui_range_selector(.{0, 160, 300, 40}, "range selector", *value, -3, 10, "some value = %");
 		ui_end();
 	
 		BeginDrawing();
 			ClearBackground(WHITE);
 			ui_draw_buffer();
-
-			 if is_ui_focused() DrawCircle(400, 400, 50, GREEN);
 		EndDrawing();
 	}
 }
@@ -59,19 +55,35 @@ main :: () {
 		board = .{
 			rules = .{
 				must_capture = true,
-				diagonal = false,
+				diagonal = true,
 				leveled_upgrade = false,
-				rows_offset = 1,
-				rows = 1,
+				rows_offset = 0,
+				rows = 3,
 				diam = 8,
-				cutoff = 2,
-				enable_border = true,
-				border_period = 16,
+				cutoff = 0,
+				enable_border = false,
+				// border_period = 16,
 				must_continue_capture = true,
-				// two_players = false,
+				two_players = true,
 				land_right_behind = false,
-				// _180_no_scope = true
+				_180_no_scope = false
 			}
+
+			// rules = .{
+			// 	must_capture = true,
+			// 	diagonal = true,
+			// 	leveled_upgrade = true,
+			// 	rows_offset = 0,
+			// 	rows = 2,
+			// 	diam = 10,
+			// 	cutoff = 2,
+			// 	enable_border = true,
+			// 	border_period = 16,
+			// 	must_continue_capture = true,
+			// 	// two_players = false,
+			// 	land_right_behind = false,
+			// 	// _180_no_scope = true
+			// }
 		},
 		immediate_switch = SINGLE_CAM || cam_mode == .NO_RAIL
 	};
