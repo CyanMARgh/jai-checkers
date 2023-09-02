@@ -91,12 +91,14 @@ Step :: struct {
 Board :: struct {
 	using part_on_stack : struct {
 		using rules : Rules;
-		alive_count : [4]int;
-		current_player := 0;
-		uncommited_count := 0;
-		step_id := 0;
-		active_figure := ivec2.{-1, -1};
-		last_capture_dir := ivec2.{0, 0};		
+		using except_rules : struct {
+			alive_count : [4]int;
+			current_player := 0;
+			uncommited_count := 0;
+			step_id := 0;
+			active_figure := ivec2.{-1, -1};
+			last_capture_dir := ivec2.{0, 0};			
+		}
 	}
 
 	cells : []Cell;
@@ -110,27 +112,29 @@ at :: (using board : Board, pos : ivec2) -> Cell {
 	if pos.x < 0 || pos.x >= diam || pos.y < 0 || pos.y >= diam then return .BORDER;
 	return cells[pos.x + diam * pos.y];
 }
-is_valid :: (using rules : Rules) -> bool {
-	if diam <= 0 || cutoff < 0 {
-		log("(0)\n");
-		return false;
+is_valid :: (using rules : Rules) -> bool, info : string {
+	if diam <= 0 {
+		return false, "diameter must be positive";
 	}
-	if rows_offset < 0 || cutoff * 2 >= diam {
-		log("(3)\n");
-		return false;
+	if cutoff < 0 {
+		return false, "cutoff must be non-negative";
+	}
+	if rows_offset < 0 {
+		return false, "rows offset must be non-negative";
+	}
+	if cutoff * 2 >= diam {
+		return false, "too big cutoff";
 	}
 	if two_players {
-		if (rows_offset + rows) * 2 >=  diam{
-			log("(1)\n");
-			return false;
+		if (rows_offset + rows) * 2 >= diam {
+			return false, "to few space for figures";
 		}
 	} else {
 		if cutoff == 0 || rows_offset + rows > cutoff {
-			log("(2)\n");
-			return false;
+			return false, "to few space for figures";
 		}
 	}
-	return true;
+	return true, "";
 }
 
 init :: (using board : *Board) {
@@ -204,8 +208,9 @@ init :: (using board : *Board) {
 	}
 }
 deinit :: (using board : *Board) {
-	array_free(cells);
-	array_free(history);
+	array_reset(*cells);
+	array_reset(*history);
+	except_rules = .{};
 }
 // TODO cell_props :: struct {}
 cell_level :: (cell : Cell) -> u8 {
@@ -916,11 +921,11 @@ refresh_possible_moves :: (using board_interface : *Board_Interface) {
 }
 deinit :: (using board_interface : *Board_Interface) {
 	deinit(board);
-	array_free(shown_steps_move);
-	array_free(shown_steps_capture);
-	array_free(clickable_figures_move);
-	array_free(clickable_figures_capture);
-	array_free(clickable_figures_capture_or_move);
+	array_reset(*shown_steps_move);
+	array_reset(*shown_steps_capture);
+	array_reset(*clickable_figures_move);
+	array_reset(*clickable_figures_capture);
+	array_reset(*clickable_figures_capture_or_move);
 }
 
 #load "serialization.jai";

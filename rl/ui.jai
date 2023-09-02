@@ -1,3 +1,5 @@
+#import "String";
+
 ui_init :: () {
 	W, H = GetScreenWidth(), GetScreenHeight();
 	ui_buffer = LoadRenderTexture(W, H);
@@ -55,13 +57,15 @@ ui_button :: (_rect : Rectangle, tag : string, text : string) -> bool {
 	ui_draw_text_block(rect, text, shadow = down_tag == tag);
 	return result;
 }
-ui_checkbox :: (_rect : Rectangle, tag : string, enabled : *bool) {
+ui_checkbox :: (_rect : Rectangle, tag : string, enabled : *bool) -> updated:bool {
 	rect := add_offset(_rect, UI_GAP_WIDTH);
 	inner := ui_draw_base(rect, down_tag == tag);
-	enabled.* ^= ui_click(rect, tag, false);
+	clicked := ui_click(rect, tag, false);
+	enabled.* ^= clicked;
 	if enabled.* {
 		DrawRectangleRec(add_offset(inner, UI_BORDER_WIDTH), BLACK);
 	}
+	return clicked;
 }
 
 is_printable :: (char : KeyboardKey) -> bool {
@@ -95,14 +99,15 @@ ui_text :: (_rect : Rectangle, text : string) {
 	rect := add_offset(_rect, UI_GAP_WIDTH);
 	ui_draw_text_block(rect, text);
 }
-ui_range_selector :: (rect : Rectangle, tag : string, value : *$T, minval : T, maxval : T) {
+ui_range_selector :: (rect : Rectangle, tag : string, value : *$T, minval : T, maxval : T) -> updated:bool {
 	return ui_range_selector(rect, tag, value, minval, maxval, tag);
 }
-ui_range_selector :: (rect : Rectangle, tag : string, value : *$T, minval : T, maxval : T, text : string) {
+ui_range_selector :: (rect : Rectangle, tag : string, value : *$T, minval : T, maxval : T, text : string) -> updated:bool {
 	#run {
 		type := type_info(T).type;
 		assert(type == .INTEGER, tprint("type =%\n", type));
 	}
+	updated := false;
 	percents_count := 0;
 	{
 		for i : 0..text.count-1 if text[i] == #char"%" then percents_count += 1;
@@ -123,16 +128,57 @@ ui_range_selector :: (rect : Rectangle, tag : string, value : *$T, minval : T, m
 	};
 	if ui_button(rect_left, tprint("%.0", tag), "<") && value.* > minval {
 		value.* -= 1;
+		updated = true;
 	}
 	if ui_button(rect_right, tprint("%.1", tag), ">") && value.* < maxval {
 		value.* += 1;
+		updated = true;
 	}
 	ui_text(rect_center, ifx percents_count == 0 then text else tprint(text, value.*));
+	return updated;
 }
-ui_checkbox_with_text :: (rect : Rectangle, tag : string, enabled : *bool) {
-	ui_checkbox_with_text(rect, tag, enabled, tag);
+ui_option_selector :: (rect : Rectangle, id : *$T, options : []string) -> updated:bool {
+	return ui_option_selector(rect, join(..options, allocator = temp, separator = "_"), id, options);
 }
-ui_checkbox_with_text :: (rect : Rectangle, tag : string, enabled : *bool, text : string) {
+ui_option_selector :: (rect : Rectangle, tag : string, id : *$T, options : []string) -> updated:bool {
+	assert(options.count > 0);
+	updated := false;
+	if id.* >= options.count {
+		id.* = options.count - 1; 
+		updated = true;
+	}
+	#run {
+		type := type_info(T).type;
+		assert(type == .INTEGER, tprint("type =%\n", type));
+	}
+	assert(rect.width > rect.height * 2);
+	rect_left := Rectangle.{
+		rect.x, rect.y,
+		rect.height, rect.height
+	};
+	rect_center := Rectangle.{
+		rect.x + rect.height, rect.y,
+		rect.width - 2 * rect.height, rect.height
+	};
+	rect_right := Rectangle.{
+		rect.width + rect.x - rect.height, rect.y,
+		rect.height, rect.height
+	};
+	if ui_button(rect_left, tprint("%.0", tag), "<") && id.* > 0 {
+		id.* -= 1;
+		updated = true;
+	}
+	if ui_button(rect_right, tprint("%.1", tag), ">") && id.* < options.count-1 {
+		id.* += 1;
+		updated = true;
+	}
+	ui_text(rect_center, options[id.*]);
+	return updated;
+}
+ui_checkbox_with_text :: (rect : Rectangle, tag : string, enabled : *bool) -> updated:bool {
+	return ui_checkbox_with_text(rect, tag, enabled, tag);
+}
+ui_checkbox_with_text :: (rect : Rectangle, tag : string, enabled : *bool, text : string) -> updated:bool {
 	rect_left := Rectangle.{
 		rect.x, rect.y,
 		rect.height, rect.height
@@ -141,8 +187,8 @@ ui_checkbox_with_text :: (rect : Rectangle, tag : string, enabled : *bool, text 
 		rect.x + rect.height, rect.y,
 		rect.width - rect.height, rect.height
 	};
-	ui_checkbox(rect_left, tprint("%.0", tag), enabled);
 	ui_text(rect_right, text);
+	return ui_checkbox(rect_left, tprint("%.0", tag), enabled);
 }
 
 is_ui_focused :: () -> bool {

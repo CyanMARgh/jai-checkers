@@ -23,16 +23,14 @@ Game_Scene :: struct {
 	board : Board; 
 	board_interface : Board_Interface;
 
-	cursor_collision : RayCollision;
-	// delta_time, time := 0.;
-
 	using visual_data : struct {
+		cursor_collision : RayCollision;
 		background := BACKGROUND_COLORS[0];
 
 		animation_time := 0.;
 		current_step := Step.{type = .NONE};
-		banned_figure_coords : [2]ivec2;
-		banned_cell_coords : [1]ivec2;
+		banned_figure_coords := ivec2.[.{-1, -1}, .{-1, -1}];
+		banned_cell_coords := ivec2.[.{-1, -1}];
 		caption_angle := 90.;
 
 		immediate_switch := false;
@@ -41,6 +39,7 @@ Game_Scene :: struct {
 	};
 }
 init_main_scene :: (using game_scene : *Game_Scene) {
+	visual_data = .{};
 	init(*board_interface, *board);
 }
 deinit_main_scene :: (using game_scene : *Game_Scene) {
