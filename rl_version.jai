@@ -12,11 +12,14 @@
 #load "rl/main_scene.jai";
 #load "rl/utils.jai";
 #load "rl/ui.jai";
+#load "rl/capture.jai";
 // #load "networking.jai";
+// #import "stb_image_write";
 
 AUTO_PLAY :: false;
 SINGLE_CAM :: false;
 cam_mode :: Cam_Mode.WITH_RAIL;
+RENDER_VIDEO :: false
 
 _main :: () {
 	defer report_memory_leaks();
@@ -50,8 +53,19 @@ _main :: () {
 }
 
 main :: () {
+	#if RENDER_VIDEO {
+		FPS :: 45;
+		ffmpeg := ffmpeg_start_rendering(W0, H0, fps = FPS);
+		defer ffmpeg_end_rendering(*ffmpeg);
+		buffer := make_frame(W0, H0);
+		defer clear(buffer);		
+	} else {
+		FPS :: 60;
+	}
+
 	defer report_memory_leaks();
 	init_window_and_resources(); defer deinit_window_and_resources();
+	SetTargetFPS(FPS);
 	ui_init(); defer ui_deinit();
 	SetExitKey(KEY_NULL);
 
@@ -106,6 +120,9 @@ main :: () {
 
 	while !WindowShouldClose() && !exit_forced {
 		delta_time, time :float= xx min(GetFrameTime(), 1), xx GetTime();
+		#if RENDER_VIDEO {
+			ffmpeg_add_frame_with_raylib(*ffmpeg, *buffer);
+		}
 
 		if #complete app_state == {
 			case .MENU;
