@@ -19,7 +19,7 @@
 AUTO_PLAY :: false;
 SINGLE_CAM :: false;
 cam_mode :: Cam_Mode.WITH_RAIL;
-RENDER_VIDEO :: true;
+RENDER_VIDEO :: false;
 
 _main :: () {
 	defer report_memory_leaks();
