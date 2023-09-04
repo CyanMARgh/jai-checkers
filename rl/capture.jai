@@ -55,15 +55,8 @@ ffmpeg_send_frame :: (ffmpeg : *FFMPEG, frame : Frame) -> ok:bool {
 	}
 	return true;
 }
-ffmpeg_add_frame_with_raylib :: (ffmpeg : *FFMPEG, buffer : *Frame) {
-	// image := LoadImageFromScreen();
-	// defer UnloadImage(image);
-	// bytes : []u8;
-	// bytes.data = xx image.data;
-	// bytes.count = image.width * image.height * 4;
-
+ffmpeg_send_screenshot :: (ffmpeg : *FFMPEG, buffer : *Frame) {
 	fill_frame_with_screenshot(buffer);
-
 	ffmpeg_send_frame(ffmpeg, buffer);
 }
 

@@ -19,7 +19,7 @@
 AUTO_PLAY :: false;
 SINGLE_CAM :: false;
 cam_mode :: Cam_Mode.WITH_RAIL;
-RENDER_VIDEO :: false
+RENDER_VIDEO :: true;
 
 _main :: () {
 	defer report_memory_leaks();
@@ -53,6 +53,7 @@ _main :: () {
 }
 
 main :: () {
+	defer report_memory_leaks();
 	#if RENDER_VIDEO {
 		FPS :: 45;
 		ffmpeg := ffmpeg_start_rendering(W0, H0, fps = FPS);
@@ -63,7 +64,6 @@ main :: () {
 		FPS :: 60;
 	}
 
-	defer report_memory_leaks();
 	init_window_and_resources(); defer deinit_window_and_resources();
 	SetTargetFPS(FPS);
 	ui_init(); defer ui_deinit();
@@ -120,9 +120,6 @@ main :: () {
 
 	while !WindowShouldClose() && !exit_forced {
 		delta_time, time :float= xx min(GetFrameTime(), 1), xx GetTime();
-		#if RENDER_VIDEO {
-			ffmpeg_add_frame_with_raylib(*ffmpeg, *buffer);
-		}
 
 		if #complete app_state == {
 			case .MENU;
@@ -233,6 +230,10 @@ main :: () {
 					hide_cursor();
 				}
 			}
+		}
+
+		#if RENDER_VIDEO {
+			ffmpeg_send_screenshot(*ffmpeg, *buffer);
 		}
 
 		reset_temporary_storage();
