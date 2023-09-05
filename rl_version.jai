@@ -55,7 +55,11 @@ _main :: () {
 main :: () {
 	defer report_memory_leaks();
 	#if RENDER_VIDEO {
-		FPS :: 35;
+		#if DEBUG {
+			FPS :: 30;
+		} else {
+			FPS :: 40;
+		}
 		ffmpeg := ffmpeg_start_rendering(W0, H0, fps = FPS);
 		defer ffmpeg_end_rendering(*ffmpeg);
 		buffer := make_frame(W0, H0);

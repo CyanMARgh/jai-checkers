@@ -1,4 +1,4 @@
-DEBUG :: true;
+DEBUG :: false;
 IMPORT_EXTRA_PATH :: "/home/cyanmargh/projects/jai/";
 
 #import "Basic";
@@ -64,6 +64,7 @@ build :: (outfit : enum u8 {KSCURSES; SIMP; RAYLIB; RAYLIB_MATRIX;}) {
 			null_pointer_check = .OFF;
 			dead_code_elimination = .ALL;
 			backtrace_on_crash = .OFF;
+			emit_debug_info = .NONE;
 		}
 		import_path = .[import_path[0], IMPORT_EXTRA_PATH];
 
