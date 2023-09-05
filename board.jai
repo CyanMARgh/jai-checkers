@@ -94,6 +94,7 @@ Board :: struct {
 		using except_rules : struct {
 			alive_count : [4]int;
 			current_player := 0;
+			final := false;
 			uncommited_count := 0;
 			step_id := 0;
 			active_figure := ivec2.{-1, -1};
@@ -122,7 +123,7 @@ is_valid :: (using rules : Rules) -> bool, info : string {
 	if rows_offset < 0 {
 		return false, "rows offset must be non-negative";
 	}
-	if cutoff * 2 >= diam {
+	if !two_players && diam - cutoff * 2 < 2 {
 		return false, "too big cutoff";
 	}
 	if two_players {
@@ -366,6 +367,7 @@ apply :: (using board : *Board, step : Step) {
 		case .STEPEND; using step.data_stepend;
 		current_player = player_new;
 		step_id += 1;
+		final = player_old == player_new || player_new == 4;
 
 		case .BORDER; using step.data_border;
 		p := get_player_by_code(bef);
@@ -385,6 +387,7 @@ apply_and_write :: (using board : *Board, step : Step) {
 	apply(board, step);
 	array_add(*(board.history), step);
 }
+//TODO revisit
 get_last_step_view :: (using board : Board) -> []Step {
 	tail_count := history.count;
 	if !tail_count return .[];
@@ -436,6 +439,7 @@ undo_single :: (using board : *Board) {
 		assert(last_capture_dir == .{0, 0});
 		current_player = player_old;
 		step_id -= 1;
+		final = false;
 
 		case .BORDER; using step.data_border;
 		c := at_ptr(board, pos);
@@ -621,6 +625,7 @@ try_step :: (using board : *Board, from : ivec2, to : ivec2) -> enum u8 {NONE; M
 		}
 		return over == 1 || (!board.land_right_behind && over > 1), over;
 	}
+	if final return .NONE, 0;
 
 	nodes := 0;
 
@@ -706,6 +711,7 @@ what_figure_can_do :: (using board : Board, pos : ivec2, banned_capture_directio
 	return can_capture, can_move;
 }
 what_player_can_do :: (using board : Board, player_id : int, $FIND_ALL := false) -> can_capture:bool, can_move:bool, list_capture:[]ivec2, list_move:[]ivec2, list_capture_or_move:[]ivec2 {
+	if final return false, false, .[], .[], .[];
 	list_capture, list_move, list_capture_or_move : [..]ivec2;
 	can_capture, can_move : bool;
 
@@ -839,6 +845,7 @@ click :: (using board_interface : *Board_Interface, sender_id := 4) -> nodes:int
 }
 
 get_possible_steps :: (using board : Board, pos : ivec2, should_capture : bool, banned_capture_direction : ivec2, $FIND_ALL : bool) -> can_capture:bool, can_move:bool, steps_capture:[]ivec2, steps_move:[]ivec2 {	
+	if final return false, false, .[], .[];
 	cell := at(board, pos);
 	length, capture_dirs, move_dirs := get_properties(cell, rules);
 

@@ -36,6 +36,9 @@ Game_Scene :: struct {
 		immediate_switch := false;
 
 		toatal_translation := Vector3.{0, 0, 0};
+
+		fireworks_timer := 0.;
+		FIREWORKS_DELAY :: .2;
 	};
 }
 init_main_scene :: (using game_scene : *Game_Scene) {
@@ -48,6 +51,25 @@ deinit_main_scene :: (using game_scene : *Game_Scene) {
 simulate :: (using game_scene : *Game_Scene, delta_time : float) {
 	background = background * (1 - delta_time) + BACKGROUND_COLORS[board.current_player] * delta_time;
 	process_unapplied_steps(game_scene, delta_time);
+	if board.final {
+		fireworks_timer -= delta_time;
+		if fireworks_timer <= 0. {
+			color : Color;
+			ifx board.current_player == {
+				case 0; color = BLACK;
+				case 1; color = BLUE;
+				case 2; color = RED;
+				case 3; color = GREEN;
+				case 4; color = WHITE;
+				case; assert(false);
+			}
+
+			S := Vector3.{xx board.diam * CELL_SIZE, CELL_HEIGHT, xx board.diam * CELL_SIZE};
+			point := Vector3.{random_get_within_range(-.5, .5) * S.x, S.y / 2, random_get_within_range(-.5, .5) * S.z};
+			emit(*particle_system, toatal_translation + point, base_color = color, new_particles_count = 30);
+			fireworks_timer = FIREWORKS_DELAY;
+		}
+	}
 }
 process_input :: (using game_scene : *Game_Scene, camera : Camera, cursor_enabled : bool) {
 	board_interface.cursor = .{-1, -1};
@@ -277,7 +299,7 @@ draw_scene :: (using game_scene : Game_Scene, camera : Camera, time : float, par
 	}
 	draw_cursor_selection_and_collision :: (using game_scene : Game_Scene, parts : Draw_Parts) {
 		cursor := board_interface.cursor;
-		if cursor != .{-1, -1} && parts & .CURSOR then {
+		if !board.final && cursor != .{-1, -1} && parts & .CURSOR then {
 			// assert(cursor_collision.hit);
 			#if DEBUG if parts & .RAY_COLLISION {
 				p1 := cursor_collision.point;
@@ -459,14 +481,15 @@ draw_scene :: (using game_scene : Game_Scene, camera : Camera, time : float, par
 	#if DEBUG if parts & .DEBUG_INFO  {
 		DrawFPS(20, 20);
 		DrawText(temp_c_string(tprint(
-				"step = %\ntime = %\nuncommited = %\ncursor = %\ncycle_id = %\nalive_count = %\nplayer = %\n",
+				"step = %\ntime = %\nuncommited = %\ncursor = %\ncycle_id = %\nalive_count = %\nplayer = %\nis fina; = %\n",
 				current_step,
 				animation_time,
 				board.uncommited_count,
 				board_interface.cursor,
 				board_interface.step_id,
 				board_interface.alive_count,
-				board_interface.current_player
+				board_interface.current_player,
+				board_interface.final
 			)),
 			20, 40, 20, RED
 		);

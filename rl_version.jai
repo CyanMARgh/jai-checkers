@@ -55,7 +55,7 @@ _main :: () {
 main :: () {
 	defer report_memory_leaks();
 	#if RENDER_VIDEO {
-		FPS :: 45;
+		FPS :: 35;
 		ffmpeg := ffmpeg_start_rendering(W0, H0, fps = FPS);
 		defer ffmpeg_end_rendering(*ffmpeg);
 		buffer := make_frame(W0, H0);
@@ -78,22 +78,6 @@ main :: () {
 
 	using game_scene := Game_Scene.{
 		board = .{
-			// rules = .{
-			// 	must_capture = true,
-			// 	diagonal = true,
-			// 	leveled_upgrade = false,
-			// 	rows_offset = 0,
-			// 	rows = 3,
-			// 	diam = 8,
-			// 	cutoff = 0,
-			// 	enable_border = false,
-			// 	// border_period = 16,
-			// 	must_continue_capture = true,
-			// 	two_players = true,
-			// 	land_right_behind = false,
-			// 	_180_no_scope = false
-			// }
-
 			rules = .{
 				must_capture = true,
 				diagonal = false,
@@ -105,9 +89,7 @@ main :: () {
 				enable_border = true,
 				border_period = 16,
 				must_continue_capture = true,
-				// two_players = false,
 				land_right_behind = false,
-				// _180_no_scope = true
 			}
 		},
 		immediate_switch = SINGLE_CAM || cam_mode == .NO_RAIL
@@ -129,7 +111,7 @@ main :: () {
 				updated := ui_checkbox_with_text(.{0, 40, 200, 40}, "diagonal", *board.diagonal);
 				updated |= ui_range_selector(.{0, 80, 300, 40}, "diameter = %", *board.diam, 0, 26);
 				updated |= ui_range_selector(.{0, 120, 300, 40}, "cutoff = %", *board.cutoff, 0, 13);
-				updated |= ui_range_selector(.{0, 160, 360, 40}, "rows = %", *board.rows, 0, 13);
+				updated |= ui_range_selector(.{0, 160, 360, 40}, "rows = %", *board.rows, 1, 13);
 				updated |= ui_range_selector(.{0, 200, 360, 40}, "rows offset = %", *board.rows_offset, 0, 13);
 				updated |= ui_checkbox_with_text(.{0, 240, 240, 40}, "must capture", *board.must_capture);
 				updated |= ui_checkbox_with_text(.{0, 280, 360, 40}, "180 degrees no scope", *board._180_no_scope);
@@ -211,6 +193,7 @@ main :: () {
 						deinit_main_scene(*game_scene);
 						init_main_scene(*game_scene);
 						init_cameras(*game_scene);
+						reset(*particle_system);
 						app_state = .MENU;
 					}
 					if ui_button(.{0, 40, 240, 40}, "exit from game") {

@@ -27,11 +27,20 @@ deinit :: (using particle_system : *Particle_System) {
 	UnloadVertexArray(vao);
 	UnloadVertexBuffer(vbo);
 }
+reset :: (using particle_system : *Particle_System) {
+	glBindBuffer(GL_ATOMIC_COUNTER_BUFFER, particles_counter);
+	val :u32= 0;
+	glBufferSubData(GL_ATOMIC_COUNTER_BUFFER, 0, size_of(u32), *val);
+	glBindBuffer(GL_ATOMIC_COUNTER_BUFFER, 0);
+	particles_count = 0;
+	// print("reset!\n");
+}
 draw :: (using particle_system : *Particle_System) {
 	EnableShader(draw_shader.id); defer DisableShader();
     EnableVertexArray(vao); defer DisableVertexArray();
 
 	particles_count = get_value(particles_counter);
+	// print("particles_counter = %\n", particles_count);
 
 	glBindVertexArray(vao);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, vbo);
