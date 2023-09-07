@@ -1,9 +1,10 @@
-DEBUG :: false;
+DEBUG :: true;
 IMPORT_EXTRA_PATH :: "/home/cyanmargh/projects/jai/";
 
 #import "Basic";
 #import "Compiler";
 #import "Process";
+Iprof :: #import "Iprof";
 
 // TODO:
 // - ui:
@@ -71,13 +72,22 @@ build :: (outfit : enum u8 {KSCURSES; SIMP; RAYLIB; RAYLIB_MATRIX;}) {
 		output_executable_name = executable_name;
 	}
 	set_build_options(target_options, w);
+
+	iprof_flags : Intercept_Flags;
+	iprof := Iprof.get_plugin();
+	defer Iprof.finish(iprof);
+	Iprof.before_intercept(iprof, *iprof_flags);
+	iprof.workspace = w;
+
 	compiler_begin_intercept(w);
+	Iprof.add_source(iprof);
 	add_build_file(tprint("%1/%2_version.jai", #filepath, outfit_suffix), w);
 	#if OS == .WINDOWS add_build_string("#run (#import \"Windows_Resources\").disable_runtime_console();", w);
 	add_build_string(tprint("DEBUG :: %;\n", DEBUG), w);
 
 	while 1 {
 		message := compiler_wait_for_message();
+		Iprof.message(iprof, message);
 		if message.kind == {
 			case .COMPLETE;
 			break;

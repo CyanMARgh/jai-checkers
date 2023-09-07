@@ -1,4 +1,4 @@
-#import "Basic"()(MEMORY_DEBUGGER=true);
+#import "Basic"()(MEMORY_DEBUGGER=DEBUG);
 #import "Math";
 #import "Random";
 #import "Raylib";

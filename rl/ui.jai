@@ -7,6 +7,8 @@ ui_init :: () {
 }
 ui_deinit :: () {
 	UnloadRenderTexture(ui_buffer);
+	free(focus_tag);
+	free(down_tag);
 }
 
 ui_begin :: () {
@@ -29,12 +31,12 @@ ui_begin :: () {
 }
 ui_end :: () {
 	if press_on_this_frame {
-		down_tag = pressed_tag;
+		safe_move(*down_tag, pressed_tag);
 		if pressed_tag == "" {
-			focus_tag = "";
+			safe_move(*down_tag, "");
 		}
 	} else if release_on_this_frame {
-		down_tag = "";
+		safe_move(*down_tag, "");
 	}
 	pressed_tag, released_tag = "";
 	EndTextureMode();
@@ -95,6 +97,10 @@ ui_text_input :: (_rect : Rectangle, tag : string, buffer : *[..]u8) {
 	ui_draw_text_block(rect, to_string(buffer.*), shadow = tag == focus_tag);
 }
 
+safe_move :: (dst : *string, src : string) {
+	free(dst.*);
+	dst.* = copy_string(src);
+}
 ui_text :: (_rect : Rectangle, text : string) {
 	rect := add_offset(_rect, UI_GAP_WIDTH);
 	ui_draw_text_block(rect, text);
@@ -216,7 +222,7 @@ ui_click :: (rect : Rectangle, tag : string, focus : bool) -> bool {
 	if press_on_this_frame {
 		if CheckCollisionPointRec(mouse_pos, rect) {
 			pressed_tag = tag;
-			focus_tag = ifx focus then tag else "";
+			safe_move(*focus_tag, ifx focus then tag else "");
 		}
 	} else if release_on_this_frame {
 		if CheckCollisionPointRec(mouse_pos, rect) {
