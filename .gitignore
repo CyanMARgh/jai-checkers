@@ -3,6 +3,8 @@
 log.txt
 saves/
 *.mp4
+builds/
+execs/
 
 # jai
 
