@@ -75,14 +75,17 @@ is_printable :: (char : KeyboardKey) -> bool {
 	return code >= 32 && code <= 126;
 }
 
+add_string :: (buffer : *[..]u8, str : string) {
+	array_add(buffer, ..cast([]u8)str);
+}
+add_char :: (buffer : *[..]u8, char : s32) {
+	while char {
+		array_add(buffer, xx(char & 0xFF));
+		char >>= 8;
+	}
+}
 ui_text_input :: (_rect : Rectangle, tag : string, buffer : *[..]u8) {
 	rect := add_offset(_rect, UI_GAP_WIDTH);
-	add_char :: (buffer : *[..]u8, char : s32) {
-		while char {
-			array_add(buffer, xx(char & 0xFF));
-			char >>= 8;
-		}
-	}
 	if tag == focus_tag {
 		if is_printable(input_char) {
 			add_char(buffer, xx input_char);

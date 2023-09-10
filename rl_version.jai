@@ -13,8 +13,6 @@
 #load "rl/utils.jai";
 #load "rl/ui.jai";
 #load "rl/capture.jai";
-// #load "networking.jai";
-// #import "stb_image_write";
 
 AUTO_PLAY :: false;
 SINGLE_CAM :: false;
@@ -22,7 +20,9 @@ cam_mode :: Cam_Mode.WITH_RAIL;
 RENDER_VIDEO :: false;
 
 _main :: () {
-	defer report_memory_leaks();
+	#if DEBUG {
+		defer report_memory_leaks();
+	}
 	init_window_and_resources(); defer deinit_window_and_resources();
 
 	// buffer := LoadRenderTexture(GetScreenWidth(), GetScreenHeight());
@@ -53,7 +53,9 @@ _main :: () {
 }
 
 main :: () {
-	defer report_memory_leaks();
+	#if DEBUG {
+		defer report_memory_leaks();
+	}
 	#if RENDER_VIDEO {
 		#if DEBUG {
 			FPS :: 30;
@@ -104,6 +106,10 @@ main :: () {
 
 	exit_forced := false;
 
+	save_file_name_buf : [..]u8;
+	defer array_free(save_file_name_buf);
+	add_string(*save_file_name_buf, "B0");
+
 	while !WindowShouldClose() && !exit_forced {
 		delta_time, time :float= xx min(GetFrameTime(), 1), xx GetTime();
 
@@ -141,12 +147,25 @@ main :: () {
 						init_cameras(game_scene);
 					}
 				}
+				if ui_button(.{360, 0, 160, 40}, "load game") {
+					new_board : Board;
+					path := tprint("./saves/%.board", cast(string)cast([]u8)save_file_name_buf);
+					ok := load_board(*new_board, path);
+					if ok {
+						deinit(*board);
+						board = new_board;
+						updated = true;
+					} else {
+						print("failed to load board: %\n", path);
+					}
+				}
 				if !is_board_valid {
 					ui_text(.{320, 0, 500, 40}, validation_message);	
 				}
 				if ui_button(.{0, 0, 160, 40}, "play") && is_board_valid {
 					app_state = .GAME;
 				}
+				ui_text_input(.{520, 0, 240, 40}, "board name(load)", *save_file_name_buf);
 			ui_end();
 			BeginDrawing();
 				if is_board_valid {
@@ -206,6 +225,10 @@ main :: () {
 						app_state = .MENU;
 						exit_forced = true;
 					}
+					if ui_button(.{0, 120, 200, 40}, "save board:") {
+						save_board(board, tprint("./saves/%.board", cast(string)cast([]u8)save_file_name_buf));
+					}
+					ui_text_input(.{0, 160, 240, 40}, "board name", *save_file_name_buf);
 				ui_end();
 				ui_draw_buffer();
 			EndDrawing();
@@ -228,6 +251,21 @@ main :: () {
 }
 
 #scope_file
+is_online_version := false;
+Player_Status :: struct {
+	connection_status : enum u8 {
+		CONNECTED;
+		LEAVED;
+		WAIT;
+		// 
+	};
+	game_status :: enum u8 {
+		ALIVE;
+		DEAD;
+	}
+}
+players_status : [4]Player_Status;
+
 #if SINGLE_CAM {
 	_camera : Camera;
 	_player : int; 
