@@ -24,16 +24,17 @@ main :: () {
 
 	prepare(); defer finalize();
 	fps := cast(int)get_framerate(plm);
+	W0, H0 = 1920, 1080;
 
+	init_window_and_resources(); defer deinit_window_and_resources();
+	// SetWindowSize(1920, 1080);
+	SetTargetFPS(xx fps);
 	#if RENDER_VIDEO {
 		ffmpeg := ffmpeg_start_rendering(W0, H0, fps = fps);
 		defer ffmpeg_end_rendering(*ffmpeg);
 		buffer := make_frame(W0, H0);
 		defer clear(buffer);		
 	}
-
-	init_window_and_resources(); defer deinit_window_and_resources();
-	SetTargetFPS(xx fps);
 
 	fuse := 40;
 
@@ -63,8 +64,17 @@ main :: () {
 	_camera = default_camera(game_scene, 0);
 
 	while !WindowShouldClose() {
+		if IsWindowFullscreen() {
+		} else {
+			ToggleFullscreen();
+			SetWindowSize(1920, 1080);
+		}
+
 		delta_time, time :float= xx min(GetFrameTime(), 1), xx GetTime();
 		process_input_camera(game_scene);
+		if IsKeyPressed(.P) {
+			TakeScreenshot("screenshot.png");
+		}
 
 		update_main_frame();
 		if fuse > 0 {

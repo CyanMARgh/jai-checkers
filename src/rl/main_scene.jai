@@ -465,6 +465,7 @@ draw_scene :: (using game_scene : Game_Scene, camera : Camera, time : float, par
 
 	if parts & .ROSE {
 		ss := Vector2.{xx GetScreenWidth(), xx GetScreenHeight()};
+		print("ss = %\n", ss);
 		rs := ss.y * .25;
 		yaw, pitch, r := to_yaw_pitch_r(camera.target - camera.position);
 		DrawTexturePro(texture_rose,

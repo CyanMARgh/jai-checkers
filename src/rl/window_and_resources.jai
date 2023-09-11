@@ -8,7 +8,7 @@ using global_resources : struct {
 
 	sg_slide, sg_crack, sg_upgrade : Stream_Group;
 }
-W0, H0 :: 1200, 800;
+W0, H0 :s32= 1200, 800;
 init_window_and_resources :: () {
 	SetConfigFlags(.WINDOW_RESIZABLE);
 	SetConfigFlags(.MSAA_4X_HINT);
