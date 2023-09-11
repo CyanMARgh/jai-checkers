@@ -3,6 +3,7 @@
 log.txt
 saves/
 *.mp4
+*.mpg
 builds/
 execs/
 
