@@ -166,7 +166,7 @@ main :: () {
 					}
 				}
 				if !is_board_valid {
-					ui_text(.{320, 0, 500, 40}, validation_message);	
+					ui_text(.{0, 560, 500, 40}, validation_message);	
 				}
 				if ui_button(.{0, 0, 160, 40}, "play") && is_board_valid {
 					app_state = .GAME;
