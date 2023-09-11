@@ -96,7 +96,7 @@ main :: () {
 
 #scope_file
 board := Board.{
-	rules = .{diam = 12, cutoff = 2, rows = 2, must_capture = true}
+	rules = .{diam = 12, cutoff = 2, rows = 2, must_capture = .ALWAYS}
 	// rules = .{diam = 16, cutoff = 4, rows = 2, rows_offset = 1, must_capture = false, diagonal = false}
 };
 board_interface : Board_Interface;

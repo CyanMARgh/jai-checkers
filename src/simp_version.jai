@@ -18,7 +18,7 @@ GAME_VERSION :: "v1";
 mouse_over    : ivec2 = .{-1, -1};
 selected_tile : ivec2 = .{-1, -1};
 board := Board.{
-    rules = .{diam=16, cutoff=4, rows=3, rows_offset=0, must_capture=false, diagonal=true, enable_border=true, border_period=4}
+    rules = .{diam=16, cutoff=4, rows=3, rows_offset=0, must_capture=.ALWAYS, diagonal=true, enable_border=true, border_period=4}
 };
 
 player_colors :: Vector4.[.{.933,.378,.407,1.},.{.424,.964,.273,1.},.{.254,.306,.936,1.},.{.917,.999,.000,1.}, .{0,0,0,1}];
