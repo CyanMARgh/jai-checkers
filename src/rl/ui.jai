@@ -135,11 +135,11 @@ ui_range_selector :: (rect : Rectangle, tag : string, value : *$T, minval : T, m
 		rect.width + rect.x - rect.height, rect.y,
 		rect.height, rect.height
 	};
-	if ui_button(rect_left, tprint("%.0", tag), "<") && value.* > minval {
+	if value.* > minval if ui_button(rect_left, tprint("%.0", tag), "<") {
 		value.* -= 1;
 		updated = true;
 	}
-	if ui_button(rect_right, tprint("%.1", tag), ">") && value.* < maxval {
+	if value.* < maxval if ui_button(rect_right, tprint("%.1", tag), ">") {
 		value.* += 1;
 		updated = true;
 	}
@@ -153,7 +153,7 @@ ui_option_selector :: (rect : Rectangle, tag : string, id : *$T, options : []str
 	assert(options.count > 0);
 	updated := false;
 	if id.* >= options.count {
-		id.* = options.count - 1; 
+		id.* = xx(options.count - 1); 
 		updated = true;
 	}
 	#run {
@@ -173,11 +173,11 @@ ui_option_selector :: (rect : Rectangle, tag : string, id : *$T, options : []str
 		rect.width + rect.x - rect.height, rect.y,
 		rect.height, rect.height
 	};
-	if ui_button(rect_left, tprint("%.0", tag), "<") && id.* > 0 {
+	if id.* > 0 if ui_button(rect_left, tprint("%.0", tag), "<")  {
 		id.* -= 1;
 		updated = true;
 	}
-	if ui_button(rect_right, tprint("%.1", tag), ">") && id.* < options.count-1 {
+	if id.* < options.count-1 if ui_button(rect_right, tprint("%.1", tag), ">") {
 		id.* += 1;
 		updated = true;
 	}

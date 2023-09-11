@@ -13,7 +13,11 @@ Rules :: struct {
 	// upgrade_in_process := true;
 	border_period 			:= 20;
 
-	must_capture			:= false;
+	must_capture : enum s8 {
+		NEVER	:: 0;
+		ALWAYS	:: 1;
+		QUEENS	:: 2;
+	} = .NEVER;
 	diagonal				:= true;
 	_180_no_scope			:= false;
 	leveled_upgrade 		:= false;
@@ -24,9 +28,9 @@ Rules :: struct {
 	land_right_behind		:= true;
 }
 
-RULES_RUSSIAN :: Rules.{must_capture = true};
+RULES_RUSSIAN :: Rules.{must_capture = .ALWAYS};
 RULES_CLASSIC :: Rules.{diagonal = false, leveled_upgrade = true, rows_offset = 1, rows = 2};
-RULES_DEBUG :: Rules.{must_capture = true, diagonal = false, leveled_upgrade = true, rows_offset = 1, rows = 1, diam = 8, cutoff = 2};
+RULES_DEBUG :: Rules.{must_capture = .ALWAYS, diagonal = false, leveled_upgrade = true, rows_offset = 1, rows = 1, diam = 8, cutoff = 2};
 
 Cell :: enum_flags u16 {
 	BLACK		:: 0x0001;
@@ -233,7 +237,7 @@ get_properties :: (cell : Cell, rules : Rules) -> length:s32, capture_dirs:[4]iv
 	if rules.leveled_upgrade {
 		length = rules.length_by_level[cell_level(cell)];
 	} else {
-		length = ifx cell & .KING_ANY then rules.diam else 1;
+		length = ifx cell & .KING_ANY then rules.length_by_level[3] else 1;
 	}
 
 	capture_dirs, dirs : [4]ivec2;
@@ -315,8 +319,8 @@ gen_step_upgrade :: (using board : Board, pos : ivec2) -> Step {
 get_next_player :: (using board : Board) -> int {
 	for i : 1..4 {
 		p := (current_player + i) % 4;
-		can_kill, can_move := what_player_can_do(board, p);
-		if can_kill || can_move return p;
+		can_regular_capture, can_queens_capture, can_move := what_player_can_do(board, p); //   !!!!!
+		if can_regular_capture || can_queens_capture || can_move return p;
 	}
 	return 4;
 }
@@ -671,17 +675,17 @@ try_step :: (using board : *Board, from : ivec2, to : ivec2) -> enum u8 {NONE; M
 	return .NONE, nodes;
 }
 should_current_player_capture :: (using board : *Board) -> bool {
-	if !must_capture return false;
-	can_capture, can_move := what_player_can_do(board, current_player);
-	return can_capture;
+	if must_capture == .NEVER return false;
+	can_regular_capture, can_queens_capture, can_move := what_player_can_do(board, current_player);
+	return ifx must_capture == .ALWAYS then (can_regular_capture || can_queens_capture) else can_queens_capture;
 }
 is_final :: (using board : *Board) -> bool, winner:int {
 	if active_figure != .{-1, -1} then return false, 4;
 	if current_player == 4 then return true, 4;
 	alive, winner := 0, 4;
 	for p : 0..3 {
-		can_capture, can_move := what_player_can_do(board, p);
-		if can_capture || can_move {
+		can_regular_capture, can_queens_capture, can_move := what_player_can_do(board, p);
+		if can_regular_capture || can_queens_capture || can_move {
 			winner = p;
 			alive += 1;
 		}
@@ -710,10 +714,10 @@ what_figure_can_do :: (using board : Board, pos : ivec2, banned_capture_directio
 	can_capture, can_move := get_possible_steps(board, pos, false, banned_capture_direction, false);
 	return can_capture, can_move;
 }
-what_player_can_do :: (using board : Board, player_id : int, $FIND_ALL := false) -> can_capture:bool, can_move:bool, list_capture:[]ivec2, list_move:[]ivec2, list_capture_or_move:[]ivec2 {
-	if final return false, false, .[], .[], .[];
+what_player_can_do :: (using board : Board, player_id : int, $FIND_ALL := false) -> can_regular_capture:bool, can_queens_capture:bool, can_move:bool, list_capture:[]ivec2, list_move:[]ivec2, list_capture_or_move:[]ivec2 {
+	if final return  false, false, false, .[], .[], .[];
 	list_capture, list_move, list_capture_or_move : [..]ivec2;
-	can_capture, can_move : bool;
+	can_regular_capture, can_queens_capture, can_move : bool;
 
 	if active_figure == .{-1, -1} then {
 		i := 0;
@@ -725,8 +729,11 @@ what_player_can_do :: (using board : Board, player_id : int, $FIND_ALL := false)
 				if p != player_id continue;
 				pos := ivec2.{xx x, xx y};
 				can_capture_f, can_move_f := what_figure_can_do(board, pos, .{});
-
-				can_capture |= can_capture_f;
+				if cell & .KING_ANY {
+					can_queens_capture |= can_capture_f;
+				} else {
+					can_regular_capture |= can_capture_f;
+				}
 				can_move |= can_move_f;
 				#if FIND_ALL {
 					if can_capture_f && can_move_f {
@@ -737,7 +744,7 @@ what_player_can_do :: (using board : Board, player_id : int, $FIND_ALL := false)
 						array_add(*list_move, pos);
 					}
 				} else {
-					if can_capture && can_move break y;
+					if can_queens_capture && can_regular_capture && can_move break y;
 				}
 			}
 		}		
@@ -745,8 +752,11 @@ what_player_can_do :: (using board : Board, player_id : int, $FIND_ALL := false)
 		assert(current_player == player_id);
 		can_capture_f, _ := what_figure_can_do(board, active_figure, -last_capture_dir);
 		can_move_f := true;
-
-		can_capture |= can_capture_f;
+		if at(board, active_figure) & .KING_ANY {
+			can_queens_capture |= can_capture_f;
+		} else {
+			can_regular_capture |= can_capture_f;
+		}
 		can_move |= can_move_f;
 		#if FIND_ALL {
 			if can_capture_f && can_move_f {
@@ -758,13 +768,13 @@ what_player_can_do :: (using board : Board, player_id : int, $FIND_ALL := false)
 			}
 		}
 	}
-	if can_capture && must_capture {
+	if (must_capture == .ALWAYS && (can_regular_capture || can_queens_capture)) || (must_capture == .QUEENS && can_queens_capture) {
 		array_reset(*list_move);
 		array_add(*list_capture, ..list_capture_or_move);
 		array_reset(*list_capture_or_move);
 		can_move = false;
 	}
-	return can_capture, can_move, list_capture, list_move, list_capture_or_move;
+	return can_regular_capture, can_queens_capture, can_move, list_capture, list_move, list_capture_or_move;
 }
 can_continue_capture :: (using board : Board) -> bool {
 	assert(active_figure != .{-1, -1});
@@ -914,7 +924,7 @@ refresh_possible_moves :: (using board_interface : *Board_Interface) {
 	array_reset(*clickable_figures_capture);
 	array_reset(*clickable_figures_capture_or_move);
 
-	_, _, clickable_figures_capture, clickable_figures_move, clickable_figures_capture_or_move = what_player_can_do(board, current_player, true);
+	_, _, _, clickable_figures_capture, clickable_figures_move, clickable_figures_capture_or_move = what_player_can_do(board, current_player, true);
 
 	if selected != .{-1, -1} {
 		_, _, shown_steps_capture, shown_steps_move = get_possible_steps(

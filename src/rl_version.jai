@@ -85,7 +85,7 @@ main :: () {
 	using game_scene := Game_Scene.{
 		board = .{
 			rules = .{
-				must_capture = true,
+				must_capture = .ALWAYS,
 				diagonal = false,
 				leveled_upgrade = true,
 				rows_offset = 1,
@@ -123,21 +123,27 @@ main :: () {
 				updated |= ui_range_selector(.{0, 120, 300, 40}, "cutoff = %", *board.cutoff, 0, 13);
 				updated |= ui_range_selector(.{0, 160, 360, 40}, "rows = %", *board.rows, 1, 13);
 				updated |= ui_range_selector(.{0, 200, 360, 40}, "rows offset = %", *board.rows_offset, 0, 13);
-				updated |= ui_checkbox_with_text(.{0, 240, 240, 40}, "must capture", *board.must_capture);
+				// updated |= ui_checkbox_with_text(.{0, 240, 240, 40}, "must capture", *board.must_capture);
+				updated |= ui_option_selector(.{0, 240,  360, 40}, cast(*s8)*board.must_capture, .["no forced capture", "forced capture", "angry queens"]);
 				updated |= ui_checkbox_with_text(.{0, 280, 360, 40}, "180 degrees no scope", *board._180_no_scope);
-				updated |= ui_checkbox_with_text(.{0, 320, 300, 40}, "only 2 players", *board.two_players);
+				updated |= ui_checkbox_with_text(.{0, 320, 320, 40}, "only 2 players", *board.two_players);
 				updated |= ui_checkbox_with_text(.{0, 360, 360, 40}, "backward capture", *board.backward_capture);
 				updated |= ui_checkbox_with_text(.{0, 400, 360, 40}, "battle royale border", *board.enable_border);
-				updated |= ui_range_selector(.{0, 440, 400, 40}, "border period = %", *board.border_period, 1, 1000);
+				updated |= ui_range_selector(.{0, 440, 360, 40}, "border period = %", *board.border_period, 1, 1000);
 				updated |= ui_checkbox_with_text(.{0, 480, 360, 40}, "must continue capture", *board.must_continue_capture);
 				updated |= ui_checkbox_with_text(.{0, 520, 360, 40}, "land right begind", *board.land_right_behind);
 
 				updated |= ui_checkbox_with_text(.{400, 40, 280, 40}, "leveled queens", *board.leveled_upgrade);
-				ui_text(.{400, 80, 280, 40}, "queen ranges:");
-				updated |= ui_range_selector(.{400, 120, 160, 40}, "qr0", *(board.length_by_level[0]), 1, 32, "%");
-				updated |= ui_range_selector(.{400, 160, 160, 40}, "qr1", *(board.length_by_level[1]), 1, 32, "%");
-				updated |= ui_range_selector(.{400, 200, 160, 40}, "qr2", *(board.length_by_level[2]), 1, 32, "%");
-				updated |= ui_range_selector(.{400, 240, 160, 40}, "qr3", *(board.length_by_level[3]), 1, 32, "%");
+				if board.leveled_upgrade {
+					ui_text(.{400, 80, 280, 40}, "queen ranges:");
+					updated |= ui_range_selector(.{400, 120, 160, 40}, "qr0", *(board.length_by_level[0]), 1, 32, "%");
+					updated |= ui_range_selector(.{400, 160, 160, 40}, "qr1", *(board.length_by_level[1]), 1, 32, "%");
+					updated |= ui_range_selector(.{400, 200, 160, 40}, "qr2", *(board.length_by_level[2]), 1, 32, "%");
+					updated |= ui_range_selector(.{400, 240, 160, 40}, "qr3", *(board.length_by_level[3]), 1, 32, "%");
+				} else {
+					ui_text(.{400, 80, 280, 40}, "queen range:");
+					updated |= ui_range_selector(.{400, 120, 160, 40}, "qr4", *(board.length_by_level[3]), 1, 32, "%");					
+				}
 
 				if updated {
 					is_board_valid, validation_message = is_valid(board.rules);

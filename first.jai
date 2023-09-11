@@ -11,9 +11,7 @@ Iprof :: #import "Iprof";
 // TODO:
 // - dead pieces (?)
 // - undo last step (full)
-// - can continue capture after upgrade (rule), default = true
 // - must_capture : enum u8 { OFF; ON; ___QUEENS___; } = .OFF;
-// - save board
 // - board editor mode
 // - autoclick, if single step aviable
 
@@ -64,21 +62,15 @@ build :: (outfit : enum u8 {KSCURSES; SIMP; RAYLIB; RAYLIB_MATRIX;}) {
 		using target_options;
 		text_output_flags = 0;
 
+		set_optimization(*target_options, ifx DEBUG then .DEBUG else .VERY_OPTIMIZED, !DEBUG);
+		backend = .X64;
 		#if DEBUG {
 		} else {
-			llvm_options.bitcode_optimization_setting = .O3;
-			stack_trace = false;
-			array_bounds_check = .OFF;
-			cast_bounds_check = .OFF;
-			// math_bounds_check = .OFF;
-			null_pointer_check = .OFF;
-			dead_code_elimination = .ALL;
-			backtrace_on_crash = .OFF;
 			emit_debug_info = .NONE;
 		}
+
 		output_path = "execs";
 		import_path = .[import_path[0], IMPORT_EXTRA_PATH];
-
 		output_executable_name = executable_name;
 	}
 	set_build_options(target_options, w);
@@ -107,6 +99,8 @@ build :: (outfit : enum u8 {KSCURSES; SIMP; RAYLIB; RAYLIB_MATRIX;}) {
 		if message.kind == {
 			case .COMPLETE;
 			break;
+			case .ERROR;
+			return;
 		}
 	}
 	compiler_end_intercept(w);
