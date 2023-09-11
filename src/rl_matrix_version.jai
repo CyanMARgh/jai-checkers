@@ -28,7 +28,7 @@ main :: () {
 		it.* = .{
 			board = .{
 				rules = .{
-					must_capture = true,
+					must_capture = .ALWAYS,
 					diagonal = false,
 					leveled_upgrade = true,
 					rows_offset = 1,

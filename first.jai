@@ -11,7 +11,6 @@ Iprof :: #import "Iprof";
 // TODO:
 // - dead pieces (?)
 // - undo last step (full)
-// - must_capture : enum u8 { OFF; ON; ___QUEENS___; } = .OFF;
 // - board editor mode
 // - autoclick, if single step aviable
 
@@ -30,7 +29,7 @@ Iprof :: #import "Iprof";
 	#run assert(false, "invalid OS");
 }
 
-build :: (outfit : enum u8 {KSCURSES; SIMP; RAYLIB; RAYLIB_MATRIX;}) {
+build :: (outfit : enum u8 {KSCURSES; SIMP; RAYLIB; RAYLIB_MATRIX; RAYLIB_BAD_APPLE;}) {
 	w := compiler_create_workspace();
 	make_directory_if_it_does_not_exist("saves");
 	make_directory_if_it_does_not_exist("builds");
@@ -46,6 +45,7 @@ build :: (outfit : enum u8 {KSCURSES; SIMP; RAYLIB; RAYLIB_MATRIX;}) {
 		case .RAYLIB; outfit_suffix = "rl";
 		case .SIMP; outfit_suffix = "simp";
 		case .RAYLIB_MATRIX; outfit_suffix = "rl_matrix";
+		case .RAYLIB_BAD_APPLE; outfit_suffix = "rl_ba";
 	}
 	
 	executable_name := tprint("checkers_%1%2%3", 
@@ -63,9 +63,10 @@ build :: (outfit : enum u8 {KSCURSES; SIMP; RAYLIB; RAYLIB_MATRIX;}) {
 		text_output_flags = 0;
 
 		set_optimization(*target_options, ifx DEBUG then .DEBUG else .VERY_OPTIMIZED, !DEBUG);
-		backend = .X64;
 		#if DEBUG {
+			backend = .X64;
 		} else {
+			backend = .LLVM;
 			emit_debug_info = .NONE;
 		}
 
