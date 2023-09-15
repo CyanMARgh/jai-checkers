@@ -153,17 +153,8 @@ main :: () {
 						init_cameras(game_scene);
 					}
 				}
-				if ui_button(.{360, 0, 160, 40}, "load game") {
-					new_board : Board;
-					path := tprint("./saves/%.board", cast(string)cast([]u8)save_file_name_buf);
-					ok := load_board(*new_board, path);
-					if ok {
-						deinit(*board);
-						board = new_board;
-						updated = true;
-					} else {
-						print("failed to load board: %\n", path);
-					}
+				if ui_button(.{400, 0, 160, 40}, "load game") {
+					ui_show_popup("board_name_popup");
 				}
 				if !is_board_valid {
 					ui_text(.{0, 560, 500, 40}, validation_message);	
@@ -171,7 +162,22 @@ main :: () {
 				if ui_button(.{0, 0, 160, 40}, "play") && is_board_valid {
 					app_state = .GAME;
 				}
-				ui_text_input(.{520, 0, 240, 40}, "board name(load)", *save_file_name_buf);
+
+				for Popup.{"board_name_popup", centerize(.{250, 90}, ui_size())} {
+					if ui_button(.{0, 0, 160, 40}, "ok") {
+						new_board : Board;
+						path := tprint("./saves/%.board", cast(string)cast([]u8)save_file_name_buf);
+						ok := load_board(*new_board, path);
+						if ok {
+							deinit(*board);
+							board = new_board;
+							updated = true;
+							ui_close_popup();
+						}
+					}
+					ui_text_input(.{0, 40, 240, 40}, "board name(load)", *save_file_name_buf);
+					if IsKeyPressed(.ESCAPE) ui_close_popup();
+				}
 			ui_end();
 			BeginDrawing();
 				if is_board_valid {
@@ -232,7 +238,24 @@ main :: () {
 						exit_forced = true;
 					}
 					if ui_button(.{0, 120, 200, 40}, "save board:") {
-						save_board(board, tprint("./saves/%.board", cast(string)cast([]u8)save_file_name_buf));
+						valid_name := true;
+						for save_file_name_buf {
+							if !(
+								it >= #char"a" && it <= #char"z" || 
+								it >= #char"A" && it <= #char"Z" || 
+								it >= #char"0" && it <= #char"9" ||
+								it == #char"_" ||
+								it == #char" "
+							) {
+								valid_name = false;
+								break;
+							}  
+						}
+						if valid_name {
+							save_board(board, tprint("./saves/%.board", cast(string)cast([]u8)save_file_name_buf));
+						} else {
+							print("invalid board name!\n");
+						}
 					}
 					ui_text_input(.{0, 160, 240, 40}, "board name", *save_file_name_buf);
 				ui_end();

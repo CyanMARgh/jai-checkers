@@ -9,6 +9,11 @@ ui_deinit :: () {
 	UnloadRenderTexture(ui_buffer);
 	free(focus_tag);
 	free(down_tag);
+	free(popup_active);
+}
+
+ui_size :: () -> Vector2 {
+	return .{xx W, xx H};
 }
 
 ui_begin :: () {
@@ -55,7 +60,10 @@ ui_button :: (_rect : Rectangle, tag : string) -> bool {
 }
 ui_button :: (_rect : Rectangle, tag : string, text : string) -> bool {
 	rect := add_offset(_rect, UI_GAP_WIDTH);
-	result := ui_click(rect, tag, false);
+	result := false;
+	if is_on_right_level() {
+		result = ui_click(rect, tag, false);
+	}
 	ui_draw_text_block(rect, text, shadow = down_tag == tag);
 	return result;
 }
@@ -86,17 +94,18 @@ add_char :: (buffer : *[..]u8, char : s32) {
 }
 ui_text_input :: (_rect : Rectangle, tag : string, buffer : *[..]u8) {
 	rect := add_offset(_rect, UI_GAP_WIDTH);
-	if tag == focus_tag {
-		if is_printable(input_char) {
-			add_char(buffer, xx input_char);
-		} else if input_key == .BACKSPACE {
-			if buffer.count > 0 {
-				buffer.count -= 1;
+	if is_on_right_level() {
+		if tag == focus_tag {
+			if is_printable(input_char) {
+				add_char(buffer, xx input_char);
+			} else if input_key == .BACKSPACE {
+				if buffer.count > 0 {
+					buffer.count -= 1;
+				}
 			}
 		}
+		ui_click(rect, tag, true);		
 	}
-
-	ui_click(rect, tag, true);
 	ui_draw_text_block(rect, to_string(buffer.*), shadow = tag == focus_tag);
 }
 
@@ -203,9 +212,50 @@ ui_checkbox_with_text :: (rect : Rectangle, tag : string, enabled : *bool, text 
 is_ui_focused :: () -> bool {
 	return focus_tag != "";
 }
+is_on_right_level :: () -> bool {
+	return popup_active == popup_current;
+}
+ui_show_popup :: (tag : string) {
+	assert(popup_active == "");
+	safe_move(*popup_active, tag);
+}
+ui_close_popup :: () {
+	assert(popup_active != "");
+	safe_move(*popup_active, "");
+}
+ui_begin_popup :: (tag : string, _zone : Rectangle) {
+	zone := ui_draw_base(_zone);
+	ui_offset = zone.corner;
+	popup_current = tag;
+}
+ui_end_popup :: () {
+	ui_offset = .{};
+	assert(popup_current != "");
+	popup_current = "";
+}
+Popup :: struct { popup_tag : string; zone : Rectangle; };
+for_expansion :: (using popup : Popup, $body : Code, flags : For_Flags) #expand {
+	`it, `it_index := 0;
+	if popup_active == popup_tag {
+		ui_begin_popup(popup_tag, zone);
+		defer ui_end_popup();
+		#insert body;
+	}
+}
+
+centerize :: (inner : Vector2, outer : Rectangle) -> Rectangle {
+	return .{corner = (outer.size - inner) / 2 + outer.corner, size = inner};
+}
+centerize :: (inner : Vector2, outer : Vector2) -> Rectangle {
+	return .{corner = (outer - inner) / 2, size = inner};
+}
 
 #scope_file
+ui_offset : Vector2;
 input_char, input_key : KeyboardKey;
+
+popup_current : string;
+popup_active : string;
 
 pressed_tag : string;
 down_tag : string;
@@ -221,7 +271,8 @@ ui_font : Font;
 
 W, H : s32;
 
-ui_click :: (rect : Rectangle, tag : string, focus : bool) -> bool {
+ui_click :: (_rect : Rectangle, tag : string, focus : bool) -> bool {
+	rect := Rectangle.{corner = _rect.corner + ui_offset, size = _rect.size};
 	if press_on_this_frame {
 		if CheckCollisionPointRec(mouse_pos, rect) {
 			pressed_tag = tag;
@@ -256,7 +307,8 @@ ui_draw_base :: (rect : Rectangle, shadow := false) -> Rectangle {
 	DrawRectangleRec(inner, ifx shadow then c3 else c1);
 	return inner;
 }
-ui_draw_text_block :: (rect : Rectangle, text : string, shadow := false) {
+ui_draw_text_block :: (_rect : Rectangle, text : string, shadow := false) {
+	rect := Rectangle.{corner = _rect.corner + ui_offset, size = _rect.size};
 	c_text := temp_c_string(text);
 	s0 := MeasureTextEx(ui_font, c_text, 1, .1);
 
