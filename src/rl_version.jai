@@ -201,6 +201,9 @@ main :: () {
 								board = new_board;
 								init_cameras(game_scene);
 								ui_close_popup();
+
+								save_file_name_buf.count = 0;
+								array_add(*save_file_name_buf, ..cast([]u8)saves_list[saves_list_selection_id]);
 							}							
 						}
 					}
