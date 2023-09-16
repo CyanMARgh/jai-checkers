@@ -3,6 +3,9 @@
 #import "Random";
 #import "Raylib";
 #import "Hash";
+#import "File_Utilities";
+#import "String";
+#import "Sort";
 
 #load "board.jai";
 #load "rl/stream_group.jai";
@@ -19,38 +22,38 @@ SINGLE_CAM :: false;
 cam_mode :: Cam_Mode.WITH_RAIL;
 RENDER_VIDEO :: false;
 
-_main :: () {
-	#if DEBUG {
-		defer report_memory_leaks();
-	}
-	init_window_and_resources(); defer deinit_window_and_resources();
-
-	// buffer := LoadRenderTexture(GetScreenWidth(), GetScreenHeight());
-	ui_init(); defer ui_deinit();
-
-	input_text : [..]u8; defer array_free(input_text);
-
-	huh : bool;
-	value := 10;
-	option := 0;
-
-	while !WindowShouldClose() {
-		W, H := GetScreenWidth(), GetScreenHeight();
-		ui_begin();
-			if ui_button(.{0, 0, 200, 40}, "button 0") print("click(0)!\n");
-			if ui_button(.{0, 40, 200, 40}, "button 1") print("click(1)!\n");
-			ui_text_input(.{0, 80, 300, 40}, "input text", *input_text);
-			ui_checkbox_with_text(.{0, 120, 300, 40}, "huh", *huh);
-			ui_range_selector(.{0, 160, 300, 40}, "range selector", *value, -3, 10, "some value = %");
-			ui_option_selector(.{0, 200, 300, 40}, *option, .["apple", "apricot", "banana"]);
-		ui_end();
-	
-		BeginDrawing();
-			ClearBackground(WHITE);
-			ui_draw_buffer();
-		EndDrawing();
-	}
+saves_list : [..]string;
+saves_list_selection_id := 0;
+update_saves_list :: () {
+	for saves_list free(it);
+	saves_list.count = 0;
+	visit_files("./saves", false, *saves_list, (info: *File_Visit_Info, user_data: *[..] string) {
+		name := info.short_name;
+		if !ends_with(name, ".board") return;
+		name.count -= 6;
+		if !is_valid_save_name(name) return;
+		array_add(user_data, copy_string(name));
+	}, follow_symlinks=false);
+	quick_sort(cast([]string)saves_list, compare);
 }
+clear_saves_list :: () {
+	for saves_list free(it);
+	array_free(saves_list);
+}
+is_valid_save_name :: (name_without_ext : string) -> bool {
+	for cast([]u8)name_without_ext {
+		if !(
+			it >= #char"a" && it <= #char"z" || 
+			it >= #char"A" && it <= #char"Z" || 
+			it >= #char"0" && it <= #char"9" ||
+			it == #char"_" ||
+			it == #char" "
+		) {
+			return false;
+		}  
+	}
+	return true;
+} 
 
 main :: () {
 	#if DEBUG {
@@ -70,6 +73,9 @@ main :: () {
 		FPS :: 60;
 	}
 
+	make_directory_if_it_does_not_exist("saves");
+	update_saves_list();
+	defer clear_saves_list();
 	init_window_and_resources(); defer deinit_window_and_resources();
 	SetTargetFPS(FPS);
 	ui_init(); defer ui_deinit();
@@ -83,7 +89,10 @@ main :: () {
 	is_board_valid, validation_message := true, "";
 
 	using game_scene := Game_Scene.{
-		board = .{
+		immediate_switch = SINGLE_CAM || cam_mode == .NO_RAIL
+	};
+	#if DEBUG {
+		game_scene.board = .{
 			rules = .{
 				must_capture = .ALWAYS,
 				diagonal = false,
@@ -97,9 +106,24 @@ main :: () {
 				must_continue_capture = true,
 				land_right_behind = false,
 			}
-		},
-		immediate_switch = SINGLE_CAM || cam_mode == .NO_RAIL
-	};
+		};		
+	} else {
+		game_scene.board = .{
+			rules = .{
+				must_capture = .QUEENS,
+				diagonal = false,
+				leveled_upgrade = true,
+				rows_offset = 1,
+				rows = 2,
+				diam = 16,
+				cutoff = 4,
+				enable_border = true,
+				border_period = 40,
+				must_continue_capture = true,
+				land_right_behind = false,
+			}
+		};		
+	}
 	init_main_scene(*game_scene);
 	defer deinit_main_scene(*game_scene);
 	init_cameras(game_scene);
@@ -154,6 +178,7 @@ main :: () {
 					}
 				}
 				if ui_button(.{400, 0, 160, 40}, "load game") {
+					update_saves_list();
 					ui_show_popup("board_name_popup");
 				}
 				if !is_board_valid {
@@ -163,19 +188,29 @@ main :: () {
 					app_state = .GAME;
 				}
 
-				for Popup.{"board_name_popup", centerize(.{250, 90}, ui_size())} {
-					if ui_button(.{0, 0, 160, 40}, "ok") {
+				for Popup.{"board_name_popup", centerize(.{350, 90}, ui_size())} {
+					if ui_button(.{90, 40, 160, 40}, "ok") {
 						new_board : Board;
-						path := tprint("./saves/%.board", cast(string)cast([]u8)save_file_name_buf);
-						ok := load_board(*new_board, path);
-						if ok {
-							deinit(*board);
-							board = new_board;
-							updated = true;
+						if !saves_list {
 							ui_close_popup();
+						} else {
+							path := tprint("./saves/%.board", saves_list[saves_list_selection_id]);
+							ok := load_board(*new_board, path);
+							if ok {
+								deinit(*board);
+								board = new_board;
+								init_cameras(game_scene);
+								ui_close_popup();
+							}							
 						}
 					}
-					ui_text_input(.{0, 40, 240, 40}, "board name(load)", *save_file_name_buf);
+					if saves_list {
+						ui_option_selector(.{0, 0, 340, 40}, *saves_list_selection_id, saves_list);
+					} else {
+						ui_text(.{0, 0, 340, 40}, "no boards aviable");
+					}
+
+					// ui_text_input(.{0, 40, 240, 40}, "board name(load)", *save_file_name_buf);
 					if IsKeyPressed(.ESCAPE) ui_close_popup();
 				}
 			ui_end();
@@ -239,20 +274,8 @@ main :: () {
 					}
 					if ui_button(.{0, 120, 200, 40}, "save board:") {
 						valid_name := true;
-						for save_file_name_buf {
-							if !(
-								it >= #char"a" && it <= #char"z" || 
-								it >= #char"A" && it <= #char"Z" || 
-								it >= #char"0" && it <= #char"9" ||
-								it == #char"_" ||
-								it == #char" "
-							) {
-								valid_name = false;
-								break;
-							}  
-						}
-						if valid_name {
-							save_board(board, tprint("./saves/%.board", cast(string)cast([]u8)save_file_name_buf));
+						if is_valid_save_name(xx save_file_name_buf) {
+							save_board(board, tprint("./saves/%.board", cast(string)save_file_name_buf));
 						} else {
 							print("invalid board name!\n");
 						}

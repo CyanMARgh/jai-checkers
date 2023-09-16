@@ -31,7 +31,6 @@ Iprof :: #import "Iprof";
 
 build :: (outfit : enum u8 {KSCURSES; SIMP; RAYLIB; RAYLIB_MATRIX; RAYLIB_BAD_APPLE;}) {
 	w := compiler_create_workspace();
-	make_directory_if_it_does_not_exist("saves");
 	make_directory_if_it_does_not_exist("builds");
 	make_directory_if_it_does_not_exist("execs");
 	if !w {

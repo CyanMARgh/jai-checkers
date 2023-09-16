@@ -144,6 +144,7 @@ ui_range_selector :: (rect : Rectangle, tag : string, value : *$T, minval : T, m
 		rect.width + rect.x - rect.height, rect.y,
 		rect.height, rect.height
 	};
+	Clamp(value, minval, maxval);
 	if value.* > minval if ui_button(rect_left, tprint("%.0", tag), "<") {
 		value.* -= 1;
 		updated = true;
