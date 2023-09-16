@@ -24,6 +24,8 @@ RENDER_VIDEO :: false;
 
 saves_list : [..]string;
 saves_list_selection_id := 0;
+is_preview_board_valid : bool;
+preview_board : Board;
 update_saves_list :: () {
 	for saves_list free(it);
 	saves_list.count = 0;
@@ -54,6 +56,34 @@ is_valid_save_name :: (name_without_ext : string) -> bool {
 	}
 	return true;
 } 
+update_preview_board :: () {
+	if saves_list.count > saves_list_selection_id {
+		path := tprint("./saves/%.board", saves_list[saves_list_selection_id]);
+		deinit(*preview_board);
+		is_preview_board_valid = load_board(*preview_board, path);		
+	}
+}
+
+_main :: () {
+	SetConfigFlags(.WINDOW_RESIZABLE);
+	SetConfigFlags(.MSAA_4X_HINT);
+	InitWindow(W0, H0, "ui");
+	SetTargetFPS(60);
+
+	ui_init(); defer ui_deinit();
+
+	while !WindowShouldClose() {
+		ui_begin();
+			if ui_button(.{0, 0, 80, 80}, "btn") print("nice!\n");
+		ui_end();
+
+		BeginDrawing();
+			ClearBackground(WHITE);
+			ui_draw_icon(.{80, 0, 40, 40});
+			// ui_draw_buffer();
+		EndDrawing();
+	}
+}
 
 main :: () {
 	#if DEBUG {
@@ -76,6 +106,7 @@ main :: () {
 	make_directory_if_it_does_not_exist("saves");
 	update_saves_list();
 	defer clear_saves_list();
+	defer deinit(*preview_board);
 	init_window_and_resources(); defer deinit_window_and_resources();
 	SetTargetFPS(FPS);
 	ui_init(); defer ui_deinit();
@@ -180,6 +211,7 @@ main :: () {
 				if ui_button(.{400, 0, 160, 40}, "load game") {
 					update_saves_list();
 					ui_show_popup("board_name_popup");
+					update_preview_board();
 				}
 				if !is_board_valid {
 					ui_text(.{0, 560, 500, 40}, validation_message);	
@@ -188,32 +220,50 @@ main :: () {
 					app_state = .GAME;
 				}
 
-				for Popup.{"board_name_popup", centerize(.{350, 90}, ui_size())} {
-					if ui_button(.{90, 40, 160, 40}, "ok") {
+				for Popup.{"board_name_popup", centerize(.{390, 170}, ui_size())} {
+					if ui_button(.{110, 120, 160, 40}, "ok") {
 						new_board : Board;
 						if !saves_list {
 							ui_close_popup();
 						} else {
-							path := tprint("./saves/%.board", saves_list[saves_list_selection_id]);
-							ok := load_board(*new_board, path);
-							if ok {
+							if is_preview_board_valid {
 								deinit(*board);
-								board = new_board;
+								board = preview_board;
+								preview_board = .{};
 								init_cameras(game_scene);
 								ui_close_popup();
-
 								save_file_name_buf.count = 0;
 								array_add(*save_file_name_buf, ..cast([]u8)saves_list[saves_list_selection_id]);
-							}							
+							}
 						}
 					}
 					if saves_list {
-						ui_option_selector(.{0, 0, 340, 40}, *saves_list_selection_id, saves_list);
+						if ui_option_selector(.{0, 0, 380, 40}, *saves_list_selection_id, saves_list) {
+							update_preview_board();
+						}
 					} else {
-						ui_text(.{0, 0, 340, 40}, "no boards aviable");
+						ui_text(.{0, 0, 380, 40}, "no boards aviable");
+					}
+					if is_preview_board_valid {
+						using preview_board.rules;
+						info_text := tprint(ifx two_players then "%" else "%\\%", diam, cutoff);
+						ui_text(.{0, 80, 380, 40}, info_text, false);
+						printed := 0;
+						ui_draw_board_info :: (id : int) #expand {
+							ui_draw_icon(.{printed * 40., 40, 40, 40}, id);
+							printed += 1;
+						}
+						ui_draw_board_info(ifx diagonal then 0 else 1);
+						ui_draw_board_info(ifx two_players then 2 else 3);
+						ui_draw_board_info(ifx must_capture == .ALWAYS then 4 else ifx must_capture == .QUEENS then 9 else 12);
+						if leveled_upgrade ui_draw_board_info(5);
+						if backward_capture ui_draw_board_info(6);
+						if enable_border ui_draw_board_info(7);
+						if must_continue_capture ui_draw_board_info(8);
+						if _180_no_scope ui_draw_board_info(10);
+						if land_right_behind ui_draw_board_info(11);
 					}
 
-					// ui_text_input(.{0, 40, 240, 40}, "board name(load)", *save_file_name_buf);
 					if IsKeyPressed(.ESCAPE) ui_close_popup();
 				}
 			ui_end();

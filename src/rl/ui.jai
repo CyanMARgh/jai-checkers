@@ -4,12 +4,21 @@ ui_init :: () {
 	W, H = GetScreenWidth(), GetScreenHeight();
 	ui_buffer = LoadRenderTexture(W, H);
 	ui_font = GetFontDefault();
+	ui_icons_texture = LoadTexture("./res/icons.png");
+	SetTextureFilter(ui_icons_texture, .BILINEAR);
 }
 ui_deinit :: () {
+	UnloadTexture(ui_icons_texture);
 	UnloadRenderTexture(ui_buffer);
 	free(focus_tag);
 	free(down_tag);
 	free(popup_active);
+}
+
+ui_draw_icon :: (_zone : Rectangle, icon_id := 0) {
+	zone := Rectangle.{size = _zone.size, corner = _zone.corner + ui_offset};
+	W := cast(float)ui_icons_texture.width;
+	DrawTexturePro(ui_icons_texture, .{x = 0, y = icon_id * W, width = W, height = W}, zone, .{}, 0, WHITE);
 }
 
 ui_size :: () -> Vector2 {
@@ -64,7 +73,7 @@ ui_button :: (_rect : Rectangle, tag : string, text : string) -> bool {
 	if is_on_right_level() {
 		result = ui_click(rect, tag, false);
 	}
-	ui_draw_text_block(rect, text, shadow = down_tag == tag);
+	ui_text_raw(rect, text, shadow = down_tag == tag);
 	return result;
 }
 ui_checkbox :: (_rect : Rectangle, tag : string, enabled : *bool) -> updated:bool {
@@ -106,16 +115,16 @@ ui_text_input :: (_rect : Rectangle, tag : string, buffer : *[..]u8) {
 		}
 		ui_click(rect, tag, true);		
 	}
-	ui_draw_text_block(rect, to_string(buffer.*), shadow = tag == focus_tag);
+	ui_text_raw(rect, to_string(buffer.*), shadow = tag == focus_tag);
 }
 
 safe_move :: (dst : *string, src : string) {
 	free(dst.*);
 	dst.* = copy_string(src);
 }
-ui_text :: (_rect : Rectangle, text : string) {
+ui_text :: (_rect : Rectangle, text : string, base := true) {
 	rect := add_offset(_rect, UI_GAP_WIDTH);
-	ui_draw_text_block(rect, text);
+	ui_text_raw(rect, text, base = base);
 }
 ui_range_selector :: (rect : Rectangle, tag : string, value : *$T, minval : T, maxval : T) -> updated:bool {
 	return ui_range_selector(rect, tag, value, minval, maxval, tag);
@@ -269,6 +278,7 @@ press_on_this_frame : bool;
 
 ui_buffer : RenderTexture2D;
 ui_font : Font;
+ui_icons_texture : Texture2D;
 
 W, H : s32;
 
@@ -308,18 +318,20 @@ ui_draw_base :: (rect : Rectangle, shadow := false) -> Rectangle {
 	DrawRectangleRec(inner, ifx shadow then c3 else c1);
 	return inner;
 }
-ui_draw_text_block :: (_rect : Rectangle, text : string, shadow := false) {
+ui_text_raw :: (_rect : Rectangle, text : string, shadow := false, base := true) {
 	rect := Rectangle.{corner = _rect.corner + ui_offset, size = _rect.size};
 	c_text := temp_c_string(text);
 	s0 := MeasureTextEx(ui_font, c_text, 1, .1);
 
-	zone := ui_draw_base(rect, shadow);
-	font_size := 1. / max(.001, s0.x / zone.width, s0.y / zone.height);
+	if base {
+		rect = ui_draw_base(rect, shadow);
+	}
+	font_size := 1. / max(.001, s0.x / rect.width, s0.y / rect.height);
 	s0 *= font_size;
 
 	DrawTextPro(
 		ui_font, c_text,
-		.{zone.x + zone.width / 2, zone.y + zone.height / 2},
+		.{rect.x + rect.width / 2, rect.y + rect.height / 2},
 		s0 / 2, 0.,
 		font_size, font_size * .1,
 		.{0, 0, 0, 255}

@@ -964,6 +964,7 @@ load_board :: (using board : *Board, path : string) -> bool {
 	history.allocated = history.count;
 	return src_u8.count == 0;
 }
+
 copy :: (using src : Board) -> Board {
 	result := src;
 	result.cells = array_copy(cells);
