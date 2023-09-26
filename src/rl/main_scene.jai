@@ -66,7 +66,7 @@ simulate :: (using game_scene : *Game_Scene, delta_time : float) {
 
 			S := Vector3.{xx board.diam * CELL_SIZE, CELL_HEIGHT, xx board.diam * CELL_SIZE};
 			point := Vector3.{random_get_within_range(-.5, .5) * S.x, S.y / 2, random_get_within_range(-.5, .5) * S.z};
-			emit(*particle_system, toatal_translation + point, base_color = color, new_particles_count = 30);
+			emit(*particle_system, toatal_translation + point, color, 30);
 			fireworks_timer = FIREWORKS_DELAY;
 		}
 	}
@@ -144,10 +144,10 @@ process_unapplied_steps :: (using game_scene : *Game_Scene, delta_time : float) 
 			case .UPGRADE; using current_step.data_upgrade;
 			point := to_vec3(board, pos) + .{0, CELL_HEIGHT / 2, 0};
 			diff := aft & ~bef;
-			if diff & .KING_RED emit(*particle_system, toatal_translation + point, base_color = RED);
-			if diff & .KING_BLUE emit(*particle_system, toatal_translation + point, base_color = BLUE);
-			if diff & .KING_BLACK emit(*particle_system, toatal_translation + point, base_color = BLACK);
-			if diff & .KING_GREEN emit(*particle_system, toatal_translation + point, base_color = GREEN);
+			if diff & .KING_RED emit(*particle_system, toatal_translation + point, RED, 30);
+			if diff & .KING_BLUE emit(*particle_system, toatal_translation + point, BLUE, 30);
+			if diff & .KING_BLACK emit(*particle_system, toatal_translation + point, BLACK, 30);
+			if diff & .KING_GREEN emit(*particle_system, toatal_translation + point, GREEN, 30);
 			play(*sg_upgrade);
 			case .MOVE;
 			play(*sg_slide);

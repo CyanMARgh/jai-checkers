@@ -1,5 +1,5 @@
 using global_resources : struct {
-	particle_system := Particle_System.{particles_count = 100000};
+	particle_system : Particle_System;
 	model_cell : Model;
 	model_cylinder : Model;
 	model_sphere : Model;

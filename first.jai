@@ -25,6 +25,9 @@ Iprof :: #import "Iprof";
 } else #if OS == .WINDOWS {
 	EXECUTABLE_SUFFIX_RAW :: "";
 	EXECUTABLE_SUFFIX :: ".exe";
+} else #if OS == .MACOS {
+	EXECUTABLE_SUFFIX_RAW :: ".elf"; // not sure about that
+	EXECUTABLE_SUFFIX :: ".elf";
 } else {
 	#run assert(false, "invalid OS");
 }
