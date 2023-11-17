@@ -115,7 +115,7 @@ ui_text_input :: (_rect : Rectangle, tag : string, buffer : *[..]u8) {
 		}
 		ui_click(rect, tag, true);		
 	}
-	ui_text_raw(rect, to_string(buffer.*), shadow = tag == focus_tag);
+	ui_text_raw(rect, cast(string)buffer.*, shadow = tag == focus_tag);
 }
 
 safe_move :: (dst : *string, src : string) {
