@@ -166,7 +166,7 @@ ui_range_selector :: (rect : Rectangle, tag : string, value : *$T, minval : T, m
 	return updated;
 }
 ui_option_selector :: (rect : Rectangle, id : *$T, options : []string) -> updated:bool {
-	return ui_option_selector(rect, join(..options, allocator = temp, separator = "_"), id, options);
+	return ui_option_selector(rect, join(..options, separator = "_",, allocator = temp), id, options);
 }
 ui_option_selector :: (rect : Rectangle, tag : string, id : *$T, options : []string) -> updated:bool {
 	assert(options.count > 0);

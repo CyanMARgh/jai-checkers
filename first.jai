@@ -1,4 +1,4 @@
-DEBUG :: true;
+DEBUG :: false;
 IPROF :: false;
 IMPORT_EXTRA_PATH :: "..";
 
@@ -73,7 +73,7 @@ build :: (outfit : enum u8 {KSCURSES; SIMP; RAYLIB; RAYLIB_MATRIX; RAYLIB_BAD_AP
 		}
 
 		output_path = "execs";
-		import_path = .[import_path[0], IMPORT_EXTRA_PATH];
+		import_path = .[import_path[1], IMPORT_EXTRA_PATH];
 		output_executable_name = executable_name;
 	}
 	set_build_options(target_options, w);
